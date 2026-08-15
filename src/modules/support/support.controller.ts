@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Param, Body, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Param, Body, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentCustomer } from '../../common/decorators/current-customer.decorator';
@@ -56,7 +56,7 @@ export class SupportController {
 
   @Get('faqs')
   @ApiOperation({ summary: 'Get help center FAQs with optional search and category filter' })
-  getFaqs(@Body() query?: { search?: string; categoryId?: string }) {
+  getFaqs(@Query() query?: { search?: string; categoryId?: string }) {
     return this.supportService.getFaqs(query?.search, query?.categoryId);
   }
 }
