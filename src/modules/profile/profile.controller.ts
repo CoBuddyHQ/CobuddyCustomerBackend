@@ -57,12 +57,12 @@ export class ProfileController {
     FileInterceptor('file', {
       storage: diskStorage({
         destination: './uploads/profiles',
-        filename: (req, file, cb) => {
+        filename: (req: any, file: any, cb: any) => {
           const uniqueName = `${uuidv4()}${extname(file.originalname)}`;
           cb(null, uniqueName);
         },
       }),
-      fileFilter: (req, file, cb) => {
+      fileFilter: (req: any, file: any, cb: any) => {
         if (!file.mimetype.match(/\/(jpg|jpeg|png|webp)$/)) {
           return cb(new Error('Only image files are allowed'), false);
         }
@@ -71,7 +71,7 @@ export class ProfileController {
       limits: { fileSize: 10 * 1024 * 1024 },
     }),
   )
-  uploadPhoto(@CurrentCustomer() customer: any, @UploadedFile() file: Express.Multer.File) {
+  uploadPhoto(@CurrentCustomer() customer: any, @UploadedFile() file: any) {
     const photoUrl = `/uploads/profiles/${file.filename}`;
     return this.profileService.updatePhoto(customer.id, photoUrl);
   }

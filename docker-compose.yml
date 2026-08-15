@@ -1,0 +1,80 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: cobuddy_customer_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-cobuddy_customer_db}
+      POSTGRES_USER: ${POSTGRES_USER:-cobuddy}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-development-secret-password-2026}
+    ports:
+      - "5433:5432"
+    volumes:
+      - cobuddy_customer_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-cobuddy} -d ${POSTGRES_DB:-cobuddy_customer_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - cobuddy_network
+
+  redis:
+    image: redis:7-alpine
+    container_name: cobuddy_customer_redis
+    restart: unless-stopped
+    ports:
+      - "6380:6379"
+    volumes:
+      - cobuddy_customer_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - cobuddy_network
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cobuddy_customer_backend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: development
+      PORT: 4002
+      DATABASE_URL: postgresql://${POSTGRES_USER:-cobuddy}:${POSTGRES_PASSWORD:-development-secret-password-2026}@postgres:5432/${POSTGRES_DB:-cobuddy_customer_db}?schema=public
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${JWT_SECRET:-cobuddy-customer-super-secret-jwt-key-2026}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-cobuddy-customer-super-secret-refresh-key-2026}
+      RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID:-rzp_test_TLCpKIamWxQBYy}
+      RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET:-w2l3tVjYk6aH4zM9xQ8pL7nR}
+      OTP_DEV_BYPASS: ${OTP_DEV_BYPASS:-123456}
+    ports:
+      - "4002:4002"
+    volumes:
+      - ./src:/app/src
+      - ./prisma:/app/prisma
+      - ./uploads:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:4002/health', (r) => { process.exit(r.statusCode === 200 ? 0 : 1); });\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - cobuddy_network
+
+volumes:
+  cobuddy_customer_postgres_data:
+  cobuddy_customer_redis_data:
+
+networks:
+  cobuddy_network:
+    driver: bridge

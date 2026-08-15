@@ -18,12 +18,12 @@ export class UploadsController {
     FileInterceptor('file', {
       storage: diskStorage({
         destination: './uploads/media',
-        filename: (req, file, cb) => cb(null, `${uuidv4()}${extname(file.originalname)}`),
+        filename: (req: any, file: any, cb: any) => cb(null, `${uuidv4()}${extname(file.originalname)}`),
       }),
       limits: { fileSize: 20 * 1024 * 1024 },
     }),
   )
-  uploadFile(@UploadedFile() file: Express.Multer.File) {
+  uploadFile(@UploadedFile() file: any) {
     return {
       filename: file.filename,
       originalName: file.originalname,

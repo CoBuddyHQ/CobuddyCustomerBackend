@@ -14,7 +14,7 @@ import { SubmitKycDocumentDto } from './dto/kyc.dto';
 const kycStorage = (folder: string) =>
   diskStorage({
     destination: `./uploads/kyc/${folder}`,
-    filename: (req, file, cb) => cb(null, `${uuidv4()}${extname(file.originalname)}`),
+    filename: (req: any, file: any, cb: any) => cb(null, `${uuidv4()}${extname(file.originalname)}`),
   });
 
 @ApiTags('KYC')
@@ -42,7 +42,7 @@ export class KycController {
   submitDocument(
     @CurrentCustomer() customer: any,
     @Body() dto: SubmitKycDocumentDto,
-    @UploadedFiles() files: { frontDoc?: Express.Multer.File[]; backDoc?: Express.Multer.File[] },
+    @UploadedFiles() files: { frontDoc?: any[]; backDoc?: any[] },
   ) {
     const frontDocUrl = files?.frontDoc?.[0] ? `/uploads/kyc/documents/${files.frontDoc[0].filename}` : undefined;
     const backDocUrl = files?.backDoc?.[0] ? `/uploads/kyc/documents/${files.backDoc[0].filename}` : undefined;
@@ -55,7 +55,7 @@ export class KycController {
   @UseInterceptors(
     FileInterceptor('file', { storage: kycStorage('selfies'), limits: { fileSize: 10 * 1024 * 1024 } }),
   )
-  submitSelfie(@CurrentCustomer() customer: any, @UploadedFile() file: Express.Multer.File) {
+  submitSelfie(@CurrentCustomer() customer: any, @UploadedFile() file: any) {
     const selfieUrl = `/uploads/kyc/selfies/${file.filename}`;
     return this.kycService.submitSelfie(customer.id, selfieUrl);
   }
@@ -66,7 +66,7 @@ export class KycController {
   @UseInterceptors(
     FileInterceptor('file', { storage: kycStorage('liveness'), limits: { fileSize: 50 * 1024 * 1024 } }),
   )
-  submitLiveness(@CurrentCustomer() customer: any, @UploadedFile() file: Express.Multer.File) {
+  submitLiveness(@CurrentCustomer() customer: any, @UploadedFile() file: any) {
     const livenessUrl = `/uploads/kyc/liveness/${file.filename}`;
     return this.kycService.submitLiveness(customer.id, livenessUrl);
   }
