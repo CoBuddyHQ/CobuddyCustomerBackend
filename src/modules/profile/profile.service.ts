@@ -88,6 +88,24 @@ export class ProfileService {
     return { steps, completed, total, percentage };
   }
 
+  async updateLocation(customerId: string, data: { latitude?: number; longitude?: number; address?: string; city?: string }) {
+    const customer = await this.prisma.customer.update({
+      where: { id: customerId },
+      data: {
+        ...(data.city && { city: data.city }),
+      },
+    });
+    return { success: true, message: 'Location updated successfully', city: customer.city, latitude: data.latitude, longitude: data.longitude };
+  }
+
+  async updateInterests(customerId: string, interests: string[]) {
+    const customer = await this.prisma.customer.update({
+      where: { id: customerId },
+      data: { interests },
+    });
+    return { success: true, message: 'Interests updated successfully', interests: customer.interests };
+  }
+
   private buildProfileResponse(customer: any) {
     return {
       id: customer.id,

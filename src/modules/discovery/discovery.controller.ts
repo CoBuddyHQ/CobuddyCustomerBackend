@@ -56,4 +56,10 @@ export class DiscoveryController {
   removeFavorite(@CurrentCustomer() customer: any, @Param('companionId') companionId: string) {
     return this.discoveryService.removeFavorite(customer.id, companionId);
   }
+
+  @Get('interests')
+  @ApiOperation({ summary: 'Get list of available interest tags for discovery and onboarding' })
+  getInterests() {
+    return this.discoveryService.getInterests();
+  }
 }

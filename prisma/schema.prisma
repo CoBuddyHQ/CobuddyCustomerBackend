@@ -115,6 +115,7 @@ enum CustomerPaymentMethodType {
   card
   netbanking
   wallet
+  bank_account
 }
 
 enum RazorpayOrderStatus {
@@ -138,6 +139,8 @@ model Customer {
   gender        String?
   city          String?
   photoUrl      String?
+  interests     String[]              @default([])
+  spokenLanguages String[]            @default(["English", "Hindi"])
   kycStatus     CustomerKycStatus     @default(unverified)
   accountStatus CustomerAccountStatus @default(active)
   isOnboardingComplete Boolean        @default(false)

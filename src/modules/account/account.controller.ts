@@ -64,4 +64,34 @@ export class AccountController {
   deleteAccount(@CurrentCustomer() customer: any) {
     return this.accountService.deleteAccount(customer.id);
   }
+
+  @Get('notification-preferences')
+  @ApiOperation({ summary: 'Get notification preferences' })
+  getNotificationPreferences(@CurrentCustomer() customer: any) {
+    return this.accountService.getNotificationPreferences(customer.id);
+  }
+
+  @Patch('notification-preferences')
+  @ApiOperation({ summary: 'Update notification preferences' })
+  updateNotificationPreferences(@CurrentCustomer() customer: any, @Body() body: any) {
+    return this.accountService.updateNotificationPreferences(customer.id, body);
+  }
+
+  @Get('languages')
+  @ApiOperation({ summary: 'Get spoken and app languages' })
+  getLanguages(@CurrentCustomer() customer: any) {
+    return this.accountService.getLanguages(customer.id);
+  }
+
+  @Patch('languages')
+  @ApiOperation({ summary: 'Update language settings' })
+  updateLanguages(@CurrentCustomer() customer: any, @Body() body: { appLanguage?: string; spokenLanguages?: string[] }) {
+    return this.accountService.updateLanguages(customer.id, body);
+  }
+
+  @Post('reactivate-request')
+  @ApiOperation({ summary: 'Submit account reactivation review request' })
+  submitReactivationRequest(@Body() body: { phone?: string; email?: string; reason?: string }) {
+    return this.accountService.submitReactivationRequest(body);
+  }
 }

@@ -109,6 +109,88 @@ export class WalletService {
     });
   }
 
+  async getBankAccounts(customerId: string) {
+    return this.prisma.customerPaymentMethod.findMany({
+      where: { customerId, type: 'bank_account' },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async addBankAccount(customerId: string, data: { accName: string; accNumber: string; ifsc: string }) {
+    const last4 = data.accNumber.slice(-4);
+    return this.prisma.customerPaymentMethod.create({
+      data: {
+        customerId,
+        type: 'bank_account',
+        title: 'Verified Bank Account',
+        sub: `Account ending in ${last4}`,
+        icon: 'bank',
+        maskedNumber: `•••• ${last4}`,
+        isDefault: false,
+      },
+    });
+  }
+
+  async deleteBankAccount(customerId: string, id: string) {
+    const bank = await this.prisma.customerPaymentMethod.findFirst({
+      where: { id, customerId, type: 'bank_account' },
+    });
+    if (!bank) throw new NotFoundException('Bank account not found');
+    await this.prisma.customerPaymentMethod.delete({ where: { id } });
+    return { message: 'Bank account deleted successfully' };
+  }
+
+  async getWithdrawalMethods(customerId: string) {
+    const methods = await this.prisma.customerPaymentMethod.findMany({
+      where: { customerId, type: { in: ['bank_account', 'upi'] } },
+      orderBy: { createdAt: 'desc' },
+    });
+    return methods.map((m) => ({
+      id: m.id,
+      type: m.type === 'bank_account' ? 'bank' : 'upi',
+      title: m.title,
+      sub: m.sub ?? m.maskedNumber ?? '',
+      icon: m.icon ?? (m.type === 'bank_account' ? 'bank' : 'cellphone-wireless'),
+      isDefault: m.isDefault,
+    }));
+  }
+
+  async withdrawMoney(customerId: string, data: { amount: number; methodId?: string; type?: string }) {
+    const wallet = await this.prisma.customerWallet.findUnique({ where: { customerId } });
+    if (!wallet) throw new NotFoundException('Wallet not found');
+
+    if (data.amount < 100) {
+      throw new Error('Minimum withdrawal amount is ₹100');
+    }
+    if (data.amount > wallet.balance) {
+      throw new Error('Insufficient wallet balance');
+    }
+
+    // Deduct from wallet and create transaction
+    const [updatedWallet, tx] = await this.prisma.$transaction([
+      this.prisma.customerWallet.update({
+        where: { customerId },
+        data: { balance: { decrement: data.amount } },
+      }),
+      this.prisma.customerTransaction.create({
+        data: {
+          customerId,
+          type: 'withdrawal',
+          amount: data.amount,
+          description: `Withdrawal of ₹${data.amount} to payout account`,
+          status: 'completed',
+        },
+      }),
+    ]);
+
+    return {
+      success: true,
+      message: `₹${data.amount} withdrawal processed successfully`,
+      newBalance: updatedWallet.balance,
+      transactionId: tx.id,
+    };
+  }
+
   private buildTransactionResponse(tx: any) {
     return {
       id: tx.id,

@@ -53,9 +53,33 @@ export class WalletController {
     return this.walletService.deletePaymentMethod(customer.id, id);
   }
 
-  @Patch('payment-methods/:id/default')
-  @ApiOperation({ summary: 'Set default payment method' })
-  setDefault(@CurrentCustomer() customer: any, @Param('id') id: string) {
-    return this.walletService.setDefaultPaymentMethod(customer.id, id);
+  @Get('bank-accounts')
+  @ApiOperation({ summary: 'Get saved bank accounts for payout' })
+  getBankAccounts(@CurrentCustomer() customer: any) {
+    return this.walletService.getBankAccounts(customer.id);
+  }
+
+  @Post('bank-accounts')
+  @ApiOperation({ summary: 'Add and verify bank account for payout' })
+  addBankAccount(@CurrentCustomer() customer: any, @Body() body: { accName: string; accNumber: string; ifsc: string }) {
+    return this.walletService.addBankAccount(customer.id, body);
+  }
+
+  @Delete('bank-accounts/:id')
+  @ApiOperation({ summary: 'Delete saved bank account' })
+  deleteBankAccount(@CurrentCustomer() customer: any, @Param('id') id: string) {
+    return this.walletService.deleteBankAccount(customer.id, id);
+  }
+
+  @Get('withdrawal-methods')
+  @ApiOperation({ summary: 'Get available withdrawal methods' })
+  getWithdrawalMethods(@CurrentCustomer() customer: any) {
+    return this.walletService.getWithdrawalMethods(customer.id);
+  }
+
+  @Post('withdraw')
+  @ApiOperation({ summary: 'Withdraw money from wallet balance' })
+  withdrawMoney(@CurrentCustomer() customer: any, @Body() body: { amount: number; methodId?: string; type?: string }) {
+    return this.walletService.withdrawMoney(customer.id, body);
   }
 }

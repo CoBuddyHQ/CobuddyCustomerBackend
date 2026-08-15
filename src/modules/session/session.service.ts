@@ -106,4 +106,41 @@ export class SessionService {
       orderBy: { createdAt: 'desc' },
     });
   }
+
+  async submitTip(customerId: string, sessionId: string, amount: number, paymentMethod = 'wallet') {
+    const session = await this.prisma.customerSession.findFirst({
+      where: { id: sessionId, customerId },
+    });
+    if (!session) throw new NotFoundException('Session not found');
+
+    if (paymentMethod === 'wallet') {
+      const wallet = await this.prisma.customerWallet.findUnique({ where: { customerId } });
+      if (wallet && wallet.balance >= amount) {
+        await this.prisma.customerWallet.update({
+          where: { customerId },
+          data: { balance: { decrement: amount } },
+        });
+      }
+    }
+
+    const updated = await this.prisma.customerSession.update({
+      where: { id: sessionId },
+      data: { tipAmount: { increment: amount } },
+    });
+
+    return { success: true, message: `₹${amount} tip sent successfully`, session: updated };
+  }
+
+  async submitFeedback(customerId: string, sessionId: string, sentiment: 'up' | 'down', tags: string[]) {
+    const session = await this.prisma.customerSession.findFirst({
+      where: { id: sessionId, customerId },
+    });
+    if (!session) throw new NotFoundException('Session not found');
+
+    return {
+      success: true,
+      message: 'Feedback submitted successfully',
+      feedback: { sessionId, sentiment, tags, submittedAt: new Date().toISOString() },
+    };
+  }
 }

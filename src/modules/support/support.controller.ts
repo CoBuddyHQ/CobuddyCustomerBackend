@@ -5,19 +5,21 @@ import { CurrentCustomer } from '../../common/decorators/current-customer.decora
 import { SupportService } from './support.service';
 
 @ApiTags('Support')
-@ApiBearerAuth('customer-jwt')
-@UseGuards(JwtAuthGuard)
 @Controller('support')
 export class SupportController {
   constructor(private readonly supportService: SupportService) {}
 
   @Get('tickets')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('customer-jwt')
   @ApiOperation({ summary: 'List customer support tickets' })
   listTickets(@CurrentCustomer() customer: any) {
     return this.supportService.listTickets(customer.id);
   }
 
   @Post('tickets')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('customer-jwt')
   @ApiOperation({ summary: 'Create new support ticket' })
   createTicket(
     @CurrentCustomer() customer: any,
@@ -27,12 +29,16 @@ export class SupportController {
   }
 
   @Get('tickets/:id')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('customer-jwt')
   @ApiOperation({ summary: 'Get ticket detail with thread' })
   getTicketDetail(@CurrentCustomer() customer: any, @Param('id') id: string) {
     return this.supportService.getTicketDetail(customer.id, id);
   }
 
   @Post('tickets/:id/reply')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('customer-jwt')
   @ApiOperation({ summary: 'Send message reply to ticket thread' })
   replyToTicket(
     @CurrentCustomer() customer: any,
@@ -40,5 +46,17 @@ export class SupportController {
     @Body() body: { text: string },
   ) {
     return this.supportService.replyToTicket(customer.id, id, body.text);
+  }
+
+  @Get('categories')
+  @ApiOperation({ summary: 'Get help center topic categories' })
+  getCategories() {
+    return this.supportService.getCategories();
+  }
+
+  @Get('faqs')
+  @ApiOperation({ summary: 'Get help center FAQs with optional search and category filter' })
+  getFaqs(@Body() query?: { search?: string; categoryId?: string }) {
+    return this.supportService.getFaqs(query?.search, query?.categoryId);
   }
 }

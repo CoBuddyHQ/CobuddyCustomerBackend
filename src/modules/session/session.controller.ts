@@ -57,4 +57,24 @@ export class SessionController {
   ) {
     return this.sessionService.endSession(customer.id, id, body.tip);
   }
+
+  @Post(':id/tip')
+  @ApiOperation({ summary: 'Add a tip/gratuity for companion' })
+  submitTip(
+    @CurrentCustomer() customer: any,
+    @Param('id') id: string,
+    @Body() body: { amount: number; paymentMethod?: string },
+  ) {
+    return this.sessionService.submitTip(customer.id, id, body.amount, body.paymentMethod);
+  }
+
+  @Post(':id/feedback')
+  @ApiOperation({ summary: 'Submit post-session quick sentiment & tags feedback' })
+  submitFeedback(
+    @CurrentCustomer() customer: any,
+    @Param('id') id: string,
+    @Body() body: { sentiment: 'up' | 'down'; tags: string[] },
+  ) {
+    return this.sessionService.submitFeedback(customer.id, id, body.sentiment, body.tags);
+  }
 }

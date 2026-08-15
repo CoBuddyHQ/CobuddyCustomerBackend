@@ -81,4 +81,16 @@ export class ProfileController {
   deletePhoto(@CurrentCustomer() customer: any) {
     return this.profileService.deletePhoto(customer.id);
   }
+
+  @Patch('location')
+  @ApiOperation({ summary: 'Update customer location coordinates & city' })
+  updateLocation(@CurrentCustomer() customer: any, @Body() body: { latitude?: number; longitude?: number; address?: string; city?: string }) {
+    return this.profileService.updateLocation(customer.id, body);
+  }
+
+  @Patch('interests')
+  @ApiOperation({ summary: 'Save onboarding or profile selected interests' })
+  updateInterests(@CurrentCustomer() customer: any, @Body() body: { interests: string[] }) {
+    return this.profileService.updateInterests(customer.id, body.interests);
+  }
 }

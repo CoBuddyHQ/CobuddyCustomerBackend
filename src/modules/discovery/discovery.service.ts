@@ -159,4 +159,19 @@ export class DiscoveryService {
     });
     return { message: 'Removed from favorites' };
   }
+
+  getInterests() {
+    return [
+      { id: 'int_1', name: 'Coffee & Conversation', icon: 'coffee', category: 'social' },
+      { id: 'int_2', name: 'Fine Dining & Food', icon: 'silverware-fork-knife', category: 'dining' },
+      { id: 'int_3', name: 'Shopping & Styling', icon: 'shopping', category: 'lifestyle' },
+      { id: 'int_4', name: 'Movies & Cinema', icon: 'filmstrip', category: 'entertainment' },
+      { id: 'int_5', name: 'Art & Museums', icon: 'palette', category: 'culture' },
+      { id: 'int_6', name: 'Fitness & Workout', icon: 'dumbbell', category: 'health' },
+      { id: 'int_7', name: 'City Guide & Walk', icon: 'map-marker-path', category: 'travel' },
+      { id: 'int_8', name: 'Nightlife & Events', icon: 'glass-cocktail', category: 'nightlife' },
+      { id: 'int_9', name: 'Networking & Biz', icon: 'briefcase', category: 'career' },
+      { id: 'int_10', name: 'Gaming & Anime', icon: 'gamepad-variant', category: 'entertainment' },
+    ];
+  }
 }
