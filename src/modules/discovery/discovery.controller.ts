@@ -62,4 +62,10 @@ export class DiscoveryController {
   getInterests() {
     return this.discoveryService.getInterests();
   }
+
+  @Get('activities')
+  @ApiOperation({ summary: 'Get list of available booking activities and pricing' })
+  getActivities() {
+    return this.discoveryService.getActivities();
+  }
 }
