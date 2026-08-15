@@ -1,0 +1,652 @@
+// CoBuddy Customer Backend — Complete Prisma Schema
+// Every model is derived from actual Customer frontend screens, mock data, and navigation types.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum CustomerAccountStatus {
+  active
+  deactivated
+  suspended
+  deleted
+}
+
+enum CustomerKycStatus {
+  unverified
+  pending
+  verified
+  rejected
+}
+
+enum CustomerKycDocType {
+  AADHAAR
+  PAN
+  PASSPORT
+  DL
+}
+
+enum CustomerBookingStatus {
+  pending
+  accepted
+  declined
+  counter_proposed
+  payment_pending
+  confirmed
+  cancelled
+  in_progress
+  completed
+  disputed
+  refunded
+  expired
+}
+
+enum CustomerSessionStatus {
+  upcoming
+  pre_arrival
+  checked_in
+  active
+  completed
+  cancelled
+  no_show
+}
+
+enum CustomerPaymentStatus {
+  pending
+  completed
+  failed
+  refunded
+}
+
+enum CustomerTransactionType {
+  add_money
+  session_payment
+  refund
+  platform_fee
+  tip
+  escrow_hold
+  escrow_release
+  withdrawal
+}
+
+enum CustomerTransactionStatus {
+  pending
+  completed
+  failed
+  processing
+}
+
+enum CustomerSupportTicketStatus {
+  open
+  in_progress
+  resolved
+  closed
+}
+
+enum CustomerSOSStatus {
+  active
+  resolved
+}
+
+enum CustomerIncidentStatus {
+  submitted
+  under_review
+  resolved
+  closed
+}
+
+enum MessageSenderType {
+  customer
+  companion
+  concierge
+  system
+}
+
+enum CustomerPaymentMethodType {
+  upi
+  card
+  netbanking
+  wallet
+}
+
+enum RazorpayOrderStatus {
+  created
+  attempted
+  paid
+  failed
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CUSTOMER — Core user model
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Customer {
+  id            String                @id @default(uuid())
+  phone         String                @unique
+  countryCode   String                @default("+91")
+  name          String?
+  bio           String?
+  age           Int?
+  gender        String?
+  city          String?
+  photoUrl      String?
+  kycStatus     CustomerKycStatus     @default(unverified)
+  accountStatus CustomerAccountStatus @default(active)
+  isOnboardingComplete Boolean        @default(false)
+  fcmToken      String?
+  referralCode  String?               @unique @default(uuid())
+  referredBy    String?
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+
+  // Relations
+  refreshTokens     CustomerRefreshToken[]
+  kyc               CustomerKyc?
+  settings          CustomerSetting?
+  trustedContacts   CustomerTrustedContact[]
+  favorites         CustomerFavorite[]
+  bookings          CustomerBooking[]
+  sessions          CustomerSession[]
+  wallet            CustomerWallet?
+  transactions      CustomerTransaction[]
+  paymentMethods    CustomerPaymentMethod[]
+  conversations     CustomerConversation[]
+  notifications     CustomerNotification[]
+  sosEvents         CustomerSOS[]
+  incidents         CustomerIncident[]
+  supportTickets    CustomerSupportTicket[]
+  reviews           CustomerReview[]
+  razorpayOrders    CustomerRazorpayOrder[]
+  blockedUsers      CustomerBlock[]       @relation("Blocker")
+  blockedByUsers    CustomerBlock[]       @relation("Blocked")
+
+  @@map("customers")
+}
+
+model CustomerRefreshToken {
+  id         String   @id @default(uuid())
+  customerId String
+  token      String   @unique
+  deviceInfo String?
+  ipAddress  String?
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@map("customer_refresh_tokens")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// OTP — Short-lived, stored for dev (production: Redis TTL)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model CustomerOtp {
+  id        String   @id @default(uuid())
+  phone     String
+  otp       String
+  attempts  Int      @default(0)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([phone])
+  @@map("customer_otps")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// KYC
+// ─────────────────────────────────────────────────────────────────────────────
+
+model CustomerKyc {
+  id              String             @id @default(uuid())
+  customerId      String             @unique
+  docType         CustomerKycDocType @default(AADHAAR)
+  docNumber       String?
+  legalName       String?
+  frontDocUrl     String?
+  backDocUrl      String?
+  selfieUrl       String?
+  livenessUrl     String?
+  status          CustomerKycStatus  @default(unverified)
+  rejectionReason String?
+  verifiedAt      DateTime?
+  submittedAt     DateTime?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  customer        Customer           @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@map("customer_kyc")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CUSTOMER SETTINGS
+// ─────────────────────────────────────────────────────────────────────────────
+
+model CustomerSetting {
+  id                        String   @id @default(uuid())
+  customerId                String   @unique
+  language                  String   @default("en")
+  notificationsEnabled      Boolean  @default(true)
+  bookingNotifications      Boolean  @default(true)
+  chatNotifications         Boolean  @default(true)
+  safetyNotifications       Boolean  @default(true)
+  walletNotifications       Boolean  @default(true)
+  marketingNotifications    Boolean  @default(false)
+  appLockEnabled            Boolean  @default(false)
+  locationSharingEnabled    Boolean  @default(true)
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@map("customer_settings")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TRUSTED CONTACTS
+// ─────────────────────────────────────────────────────────────────────────────
+
+model CustomerTrustedContact {
+  id           String   @id @default(uuid())
+  customerId   String
+  name         String
+  phone        String
+  relationship String
+  createdAt    DateTime @default(now())
+
+  customer     Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@map("customer_trusted_contacts")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FAVORITES — saved companion profiles
+// ─────────────────────────────────────────────────────────────────────────────
+
+model CustomerFavorite {
+  id          String   @id @default(uuid())
+  customerId  String
+  companionId String   // References companion in companion DB (string UUID)
+  savedAt     DateTime @default(now())
+
+  customer    Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@unique([customerId, companionId])
+  @@map("customer_favorites")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BOOKINGS — Full lifecycle
+// ─────────────────────────────────────────────────────────────────────────────
+
+model CustomerBooking {
+  id                  String                @id @default(uuid())
+  bookingRef          String                @unique @default(uuid())
+  customerId          String
+  companionId         String                // External companion ID
+  companionName       String?
+  activityId          String?
+  activityName        String
+  activityIcon        String?
+  venueId             String?
+  venueName           String
+  venueAddress        String?
+  date                DateTime
+  time                String
+  durationHours       Float                 @default(1)
+  specialInstructions String?
+  status              CustomerBookingStatus @default(pending)
+  
+  // Pricing (always calculated server-side)
+  baseRate            Float
+  durationMultiplier  Float                 @default(1)
+  baseTotal           Float
+  platformFee         Float                 @default(0)
+  taxAmount           Float                 @default(0)
+  totalAmount         Float
+  
+  // Counter offer
+  counterDate         DateTime?
+  counterTime         String?
+  counterVenueName    String?
+  counterDurationHours Float?
+  counterTotalAmount  Float?
+  counterMessage      String?
+  
+  cancelReason        String?
+  declineReason       String?
+  paymentStatus       CustomerPaymentStatus @default(pending)
+  
+  requestedAt         DateTime              @default(now())
+  acceptedAt          DateTime?
+  cancelledAt         DateTime?
+  completedAt         DateTime?
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+
+  customer            Customer              @relation(fields: [customerId], references: [id])
+  sessions            CustomerSession[]
+  payments            CustomerRazorpayOrder[]
+  transactions        CustomerTransaction[]
+  reviews             CustomerReview[]
+  disputes            CustomerDispute[]
+
+  @@index([customerId])
+  @@index([companionId])
+  @@index([status])
+  @@map("customer_bookings")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SESSIONS — Live session management
+// ─────────────────────────────────────────────────────────────────────────────
+
+model CustomerSession {
+  id              String                @id @default(uuid())
+  bookingId       String
+  customerId      String
+  companionId     String
+  status          CustomerSessionStatus @default(upcoming)
+  passCode        String?               // 6-digit check-in code
+  checkInTime     DateTime?
+  checkOutTime    DateTime?
+  totalMinutes    Int?
+  extensionMinutes Int                  @default(0)
+  tipAmount       Float?
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+
+  booking         CustomerBooking       @relation(fields: [bookingId], references: [id])
+  customer        Customer              @relation(fields: [customerId], references: [id])
+
+  @@unique([bookingId, customerId])
+  @@index([customerId])
+  @@index([companionId])
+  @@map("customer_sessions")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WALLET
+// ─────────────────────────────────────────────────────────────────────────────
+
+model CustomerWallet {
+  id             String   @id @default(uuid())
+  customerId     String   @unique
+  balance        Float    @default(0)
+  pendingRefunds Float    @default(0)
+  escrowHeld     Float    @default(0)
+  currency       String   @default("INR")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  customer       Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@map("customer_wallets")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TRANSACTIONS
+// ─────────────────────────────────────────────────────────────────────────────
+
+model CustomerTransaction {
+  id            String                    @id @default(uuid())
+  customerId    String
+  bookingId     String?
+  type          CustomerTransactionType
+  amount        Float
+  description   String
+  paymentSource String?
+  referenceId   String?
+  status        CustomerTransactionStatus  @default(completed)
+  createdAt     DateTime                  @default(now())
+
+  customer      Customer                  @relation(fields: [customerId], references: [id])
+  booking       CustomerBooking?          @relation(fields: [bookingId], references: [id])
+
+  @@index([customerId])
+  @@map("customer_transactions")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PAYMENT METHODS
+// ─────────────────────────────────────────────────────────────────────────────
+
+model CustomerPaymentMethod {
+  id          String                    @id @default(uuid())
+  customerId  String
+  type        CustomerPaymentMethodType
+  title       String
+  sub         String?
+  icon        String?
+  maskedNumber String?
+  isDefault   Boolean                   @default(false)
+  isVerified  Boolean                   @default(false)
+  razorpayToken String?
+  createdAt   DateTime                  @default(now())
+
+  customer    Customer                  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@map("customer_payment_methods")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RAZORPAY ORDERS
+// ─────────────────────────────────────────────────────────────────────────────
+
+model CustomerRazorpayOrder {
+  id          String              @id @default(uuid())
+  customerId  String
+  bookingId   String?
+  orderId     String              @unique
+  paymentId   String?
+  signature   String?
+  amount      Float
+  currency    String              @default("INR")
+  receipt     String?
+  description String?
+  status      RazorpayOrderStatus @default(created)
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  customer    Customer            @relation(fields: [customerId], references: [id])
+  booking     CustomerBooking?    @relation(fields: [bookingId], references: [id])
+
+  @@map("customer_razorpay_orders")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CONVERSATIONS + MESSAGES (Chat)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model CustomerConversation {
+  id            String    @id @default(uuid())
+  customerId    String
+  companionId   String?   // null = concierge chat
+  bookingId     String?
+  isConcierge   Boolean   @default(false)
+  lastMessage   String?
+  lastMessageAt DateTime?
+  unreadCount   Int       @default(0)
+  createdAt     DateTime  @default(now())
+
+  customer      Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  messages      CustomerMessage[]
+
+  @@index([customerId])
+  @@map("customer_conversations")
+}
+
+model CustomerMessage {
+  id             String            @id @default(uuid())
+  conversationId String
+  senderType     MessageSenderType
+  senderId       String
+  text           String?
+  attachmentUrl  String?
+  isRead         Boolean           @default(false)
+  createdAt      DateTime          @default(now())
+
+  conversation   CustomerConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId])
+  @@map("customer_messages")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// NOTIFICATIONS
+// ─────────────────────────────────────────────────────────────────────────────
+
+model CustomerNotification {
+  id          String   @id @default(uuid())
+  customerId  String
+  title       String
+  description String
+  category    String   // Bookings, Wallet, Security, Support
+  icon        String?
+  iconColor   String?
+  route       String?
+  stack       String?
+  isRead      Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  customer    Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([customerId])
+  @@map("customer_notifications")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SAFETY
+// ─────────────────────────────────────────────────────────────────────────────
+
+model CustomerSOS {
+  id         String          @id @default(uuid())
+  customerId String
+  sessionId  String?
+  lat        Float?
+  lng        Float?
+  status     CustomerSOSStatus @default(active)
+  resolvedAt DateTime?
+  createdAt  DateTime        @default(now())
+
+  customer   Customer @relation(fields: [customerId], references: [id])
+
+  @@map("customer_sos")
+}
+
+model CustomerIncident {
+  id           String                 @id @default(uuid())
+  customerId   String
+  companionId  String?
+  bookingId    String?
+  description  String
+  evidenceUrls String[]               @default([])
+  status       CustomerIncidentStatus @default(submitted)
+  createdAt    DateTime               @default(now())
+
+  customer     Customer @relation(fields: [customerId], references: [id])
+
+  @@map("customer_incidents")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SUPPORT TICKETS
+// ─────────────────────────────────────────────────────────────────────────────
+
+model CustomerSupportTicket {
+  id         String                      @id @default(uuid())
+  ticketRef  String                      @unique @default(uuid())
+  customerId String
+  subject    String
+  category   String
+  status     CustomerSupportTicketStatus @default(open)
+  createdAt  DateTime                    @default(now())
+  updatedAt  DateTime                    @updatedAt
+
+  customer   Customer @relation(fields: [customerId], references: [id])
+  messages   CustomerSupportMessage[]
+
+  @@map("customer_support_tickets")
+}
+
+model CustomerSupportMessage {
+  id         String            @id @default(uuid())
+  ticketId   String
+  senderType MessageSenderType
+  senderId   String
+  text       String
+  createdAt  DateTime          @default(now())
+
+  ticket     CustomerSupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@map("customer_support_messages")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// REVIEWS
+// ─────────────────────────────────────────────────────────────────────────────
+
+model CustomerReview {
+  id            String   @id @default(uuid())
+  customerId    String
+  companionId   String
+  bookingId     String
+  rating        Float
+  comment       String?
+  punctuality   Float?
+  communication Float?
+  behavior      Float?
+  isPublic      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+
+  customer      Customer        @relation(fields: [customerId], references: [id])
+  booking       CustomerBooking @relation(fields: [bookingId], references: [id])
+
+  @@unique([customerId, bookingId])
+  @@map("customer_reviews")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DISPUTES
+// ─────────────────────────────────────────────────────────────────────────────
+
+model CustomerDispute {
+  id          String   @id @default(uuid())
+  bookingId   String
+  customerId  String
+  reason      String
+  description String?
+  status      String   @default("open")
+  resolution  String?
+  createdAt   DateTime @default(now())
+
+  booking     CustomerBooking @relation(fields: [bookingId], references: [id])
+
+  @@map("customer_disputes")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BLOCKED USERS
+// ─────────────────────────────────────────────────────────────────────────────
+
+model CustomerBlock {
+  id          String   @id @default(uuid())
+  blockerId   String
+  blockedId   String   // companionId being blocked
+  createdAt   DateTime @default(now())
+
+  blocker     Customer @relation("Blocker", fields: [blockerId], references: [id])
+  blocked     Customer @relation("Blocked", fields: [blockedId], references: [id])
+
+  @@unique([blockerId, blockedId])
+  @@map("customer_blocks")
+}
