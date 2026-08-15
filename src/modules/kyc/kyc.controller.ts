@@ -4,7 +4,7 @@ import {
 import { FileInterceptor, FileFieldsInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID } from 'crypto';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiConsumes } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentCustomer } from '../../common/decorators/current-customer.decorator';
@@ -14,7 +14,7 @@ import { SubmitKycDocumentDto } from './dto/kyc.dto';
 const kycStorage = (folder: string) =>
   diskStorage({
     destination: `./uploads/kyc/${folder}`,
-    filename: (req: any, file: any, cb: any) => cb(null, `${uuidv4()}${extname(file.originalname)}`),
+    filename: (req: any, file: any, cb: any) => cb(null, `${randomUUID()}${extname(file.originalname)}`),
   });
 
 @ApiTags('KYC')

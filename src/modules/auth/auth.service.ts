@@ -7,7 +7,6 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SendOtpDto, VerifyOtpDto } from './dto/auth.dto';
-import { v4 as uuidv4 } from 'uuid';
 
 @Injectable()
 export class AuthService {

@@ -2,7 +2,7 @@ import { Controller, Post, UseGuards, UseInterceptors, UploadedFile } from '@nes
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID } from 'crypto';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiConsumes } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
@@ -18,7 +18,7 @@ export class UploadsController {
     FileInterceptor('file', {
       storage: diskStorage({
         destination: './uploads/media',
-        filename: (req: any, file: any, cb: any) => cb(null, `${uuidv4()}${extname(file.originalname)}`),
+        filename: (req: any, file: any, cb: any) => cb(null, `${randomUUID()}${extname(file.originalname)}`),
       }),
       limits: { fileSize: 20 * 1024 * 1024 },
     }),
