@@ -29,6 +29,16 @@ export class UpdateProfileDto {
   @IsOptional()
   city?: string;
 
+  @ApiPropertyOptional({ example: '15/08/1998' })
+  @IsString()
+  @IsOptional()
+  dob?: string;
+
+  @ApiPropertyOptional({ example: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde' })
+  @IsString()
+  @IsOptional()
+  photoUrl?: string;
+
   @ApiPropertyOptional({ example: '+91' })
   @IsString()
   @IsOptional()

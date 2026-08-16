@@ -51,4 +51,44 @@ export class NotificationsService {
     });
     return { message: 'Device token registered' };
   }
+
+  async updateNotificationPermission(customerId: string, data: { enabled?: boolean; fcmToken?: string; skipped?: boolean }) {
+    const enabled = data.enabled ?? !data.skipped;
+
+    await this.prisma.customer.update({
+      where: { id: customerId },
+      data: {
+        ...(data.fcmToken && { fcmToken: data.fcmToken }),
+        onboardingStep: 'profile_setup',
+      },
+    });
+
+    const settings = await this.prisma.customerSetting.upsert({
+      where: { customerId },
+      create: {
+        customerId,
+        notificationsEnabled: enabled,
+        bookingNotifications: enabled,
+        safetyNotifications: enabled,
+        chatNotifications: enabled,
+      },
+      update: {
+        notificationsEnabled: enabled,
+        bookingNotifications: enabled,
+        safetyNotifications: enabled,
+        chatNotifications: enabled,
+      },
+    });
+
+    return {
+      success: true,
+      message: data.skipped ? 'Notification step skipped' : 'Notifications configured successfully',
+      notificationsEnabled: settings.notificationsEnabled,
+      onboardingStep: 'profile_setup',
+    };
+  }
+
+  async skipNotificationPermission(customerId: string) {
+    return this.updateNotificationPermission(customerId, { enabled: false, skipped: true });
+  }
 }

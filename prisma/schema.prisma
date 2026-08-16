@@ -136,6 +136,7 @@ model Customer {
   name          String?
   bio           String?
   age           Int?
+  dob           String?
   gender        String?
   city          String?
   latitude      Float?

@@ -40,4 +40,16 @@ export class NotificationsController {
   registerDeviceToken(@CurrentCustomer() customer: any, @Body() body: { fcmToken: string }) {
     return this.notificationsService.registerDeviceToken(customer.id, body.fcmToken);
   }
+
+  @Post('permission')
+  @ApiOperation({ summary: 'Update push notification permissions and device token' })
+  updatePermission(@CurrentCustomer() customer: any, @Body() body: { enabled?: boolean; fcmToken?: string; skipped?: boolean }) {
+    return this.notificationsService.updateNotificationPermission(customer.id, body);
+  }
+
+  @Post('skip')
+  @ApiOperation({ summary: 'Skip push notification setup step' })
+  skipNotification(@CurrentCustomer() customer: any) {
+    return this.notificationsService.skipNotificationPermission(customer.id);
+  }
 }

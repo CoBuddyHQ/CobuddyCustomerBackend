@@ -26,8 +26,11 @@ export class ProfileService {
         ...(dto.name !== undefined && { name: dto.name }),
         ...(dto.bio !== undefined && { bio: dto.bio }),
         ...(dto.age !== undefined && { age: dto.age }),
+        ...(dto.dob !== undefined && { dob: dto.dob }),
         ...(dto.gender !== undefined && { gender: dto.gender }),
         ...(dto.city !== undefined && { city: dto.city }),
+        ...(dto.photoUrl !== undefined && { photoUrl: dto.photoUrl }),
+        onboardingStep: 'interests',
       },
       include: { kyc: true, settings: true, wallet: true },
     });
@@ -39,13 +42,15 @@ export class ProfileService {
       where: { id: customerId },
       data: {
         isOnboardingComplete: true,
+        onboardingStep: 'completed',
         ...(dto.name && { name: dto.name }),
         ...(dto.city && { city: dto.city }),
         ...(dto.gender && { gender: dto.gender }),
         ...(dto.age && { age: dto.age }),
       },
+      include: { kyc: true, settings: true, wallet: true },
     });
-    return { message: 'Onboarding complete', customer };
+    return { message: 'Onboarding complete', customer: this.buildProfileResponse(customer) };
   }
 
   async updatePhoto(customerId: string, photoUrl: string) {
@@ -201,9 +206,12 @@ export class ProfileService {
       name: customer.name,
       bio: customer.bio,
       age: customer.age,
+      dob: customer.dob,
       gender: customer.gender,
       city: customer.city,
       photoUrl: customer.photoUrl,
+      interests: customer.interests || [],
+      spokenLanguages: customer.spokenLanguages || ['English', 'Hindi'],
       kycStatus: customer.kycStatus,
       accountStatus: customer.accountStatus,
       isOnboardingComplete: customer.isOnboardingComplete,
