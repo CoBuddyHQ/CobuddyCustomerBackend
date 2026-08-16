@@ -144,6 +144,15 @@ model Customer {
   kycStatus     CustomerKycStatus     @default(unverified)
   accountStatus CustomerAccountStatus @default(active)
   isOnboardingComplete Boolean        @default(false)
+  onboardingStep String               @default("legal_consent")
+  tosAccepted   Boolean               @default(false)
+  tosAcceptedAt DateTime?
+  privacyAccepted Boolean             @default(false)
+  privacyAcceptedAt DateTime?
+  communityGuidelinesAccepted Boolean @default(false)
+  communityGuidelinesAcceptedAt DateTime?
+  safetyAgreementAccepted Boolean     @default(false)
+  safetyAgreementAcceptedAt DateTime?
   fcmToken      String?
   referralCode  String?               @unique @default(uuid())
   referredBy    String?

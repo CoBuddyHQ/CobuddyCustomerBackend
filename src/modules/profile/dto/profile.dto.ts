@@ -56,3 +56,25 @@ export class CompleteOnboardingDto {
   @IsOptional()
   age?: number;
 }
+
+export class SubmitLegalConsentDto {
+  @ApiPropertyOptional({ example: true })
+  @IsOptional()
+  tosAccepted?: boolean;
+
+  @ApiPropertyOptional({ example: true })
+  @IsOptional()
+  privacyAccepted?: boolean;
+
+  @ApiPropertyOptional({ example: true })
+  @IsOptional()
+  communityGuidelinesAccepted?: boolean;
+
+  @ApiPropertyOptional({ example: true })
+  @IsOptional()
+  safetyAgreementAccepted?: boolean;
+
+  @ApiPropertyOptional({ example: true })
+  @IsOptional()
+  allAccepted?: boolean;
+}

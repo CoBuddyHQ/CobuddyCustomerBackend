@@ -101,9 +101,67 @@ export class ProfileService {
   async updateInterests(customerId: string, interests: string[]) {
     const customer = await this.prisma.customer.update({
       where: { id: customerId },
-      data: { interests },
+      data: { 
+        interests,
+        onboardingStep: 'safety_tutorial',
+      },
     });
     return { success: true, message: 'Interests updated successfully', interests: customer.interests };
+  }
+
+  async submitLegalConsent(customerId: string, dto: any) {
+    const customer = await this.prisma.customer.update({
+      where: { id: customerId },
+      data: {
+        tosAccepted: dto.tosAccepted ?? true,
+        tosAcceptedAt: new Date(),
+        privacyAccepted: dto.privacyAccepted ?? true,
+        privacyAcceptedAt: new Date(),
+        communityGuidelinesAccepted: dto.communityGuidelinesAccepted ?? true,
+        communityGuidelinesAcceptedAt: new Date(),
+        safetyAgreementAccepted: dto.safetyAgreementAccepted ?? true,
+        safetyAgreementAcceptedAt: new Date(),
+        onboardingStep: 'location',
+      },
+    });
+
+    return {
+      success: true,
+      message: 'Legal consent recorded successfully',
+      onboardingStep: customer.onboardingStep,
+      customer: this.buildProfileResponse(customer),
+    };
+  }
+
+  async getOnboardingProgress(customerId: string) {
+    const customer = await this.prisma.customer.findUnique({
+      where: { id: customerId },
+      include: { trustedContacts: true },
+    });
+    if (!customer) throw new NotFoundException('Customer not found');
+
+    const completedSteps: string[] = [];
+    if (customer.safetyAgreementAccepted || customer.tosAccepted) completedSteps.push('legal_consent');
+    if (customer.city) completedSteps.push('location');
+    if (customer.name && customer.gender) completedSteps.push('profile_setup');
+    if (customer.interests && customer.interests.length > 0) completedSteps.push('interests');
+    if (customer.trustedContacts && customer.trustedContacts.length > 0) completedSteps.push('trusted_contacts');
+    if (customer.isOnboardingComplete) completedSteps.push('completed');
+
+    let currentStep = 'legal_consent';
+    if (!completedSteps.includes('legal_consent')) currentStep = 'legal_consent';
+    else if (!completedSteps.includes('location')) currentStep = 'location';
+    else if (!completedSteps.includes('profile_setup')) currentStep = 'profile_setup';
+    else if (!completedSteps.includes('interests')) currentStep = 'interests';
+    else if (!completedSteps.includes('trusted_contacts')) currentStep = 'trusted_contacts';
+    else currentStep = 'completed';
+
+    return {
+      isOnboardingComplete: customer.isOnboardingComplete,
+      currentStep: customer.isOnboardingComplete ? 'completed' : currentStep,
+      completedSteps,
+      customer: this.buildProfileResponse(customer),
+    };
   }
 
   private buildProfileResponse(customer: any) {

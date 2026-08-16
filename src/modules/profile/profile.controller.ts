@@ -17,7 +17,7 @@ import { ApiTags, ApiBearerAuth, ApiOperation, ApiConsumes } from '@nestjs/swagg
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentCustomer } from '../../common/decorators/current-customer.decorator';
 import { ProfileService } from './profile.service';
-import { UpdateProfileDto, CompleteOnboardingDto } from './dto/profile.dto';
+import { UpdateProfileDto, CompleteOnboardingDto, SubmitLegalConsentDto } from './dto/profile.dto';
 
 @ApiTags('Profile')
 @ApiBearerAuth('customer-jwt')
@@ -36,6 +36,24 @@ export class ProfileController {
   @ApiOperation({ summary: 'Update my profile' })
   updateProfile(@CurrentCustomer() customer: any, @Body() dto: UpdateProfileDto) {
     return this.profileService.updateProfile(customer.id, dto);
+  }
+
+  @Post('legal-consent')
+  @ApiOperation({ summary: 'Submit Safety Agreement & Legal Consent' })
+  submitLegalConsent(@CurrentCustomer() customer: any, @Body() dto: SubmitLegalConsentDto) {
+    return this.profileService.submitLegalConsent(customer.id, dto);
+  }
+
+  @Post('consent')
+  @ApiOperation({ summary: 'Submit Safety Agreement & Legal Consent (alias)' })
+  submitConsent(@CurrentCustomer() customer: any, @Body() dto: SubmitLegalConsentDto) {
+    return this.profileService.submitLegalConsent(customer.id, dto);
+  }
+
+  @Get('onboarding-progress')
+  @ApiOperation({ summary: 'Get current customer onboarding progress and completed steps' })
+  getOnboardingProgress(@CurrentCustomer() customer: any) {
+    return this.profileService.getOnboardingProgress(customer.id);
   }
 
   @Post('complete-onboarding')
