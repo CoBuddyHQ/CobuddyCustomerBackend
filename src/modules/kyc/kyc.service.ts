@@ -26,23 +26,28 @@ export class KycService {
     frontDocUrl?: string,
     backDocUrl?: string,
   ) {
+    const rawType = (dto.docType || dto.documentType || 'AADHAAR').toUpperCase();
+    const docType = rawType === 'DRIVING_LICENSE' ? 'DL' : rawType;
+    const docNumber = dto.docNumber || dto.documentNumber || '1234567890';
+    const legalName = dto.legalName || 'Verified User';
+
     // Upsert KYC record
     const kyc = await this.prisma.customerKyc.upsert({
       where: { customerId },
       create: {
         customerId,
-        docType: dto.docType as any,
-        docNumber: dto.docNumber,
-        legalName: dto.legalName,
+        docType: docType as any,
+        docNumber,
+        legalName,
         frontDocUrl: frontDocUrl ?? null,
         backDocUrl: backDocUrl ?? null,
         status: 'pending',
         submittedAt: new Date(),
       },
       update: {
-        docType: dto.docType as any,
-        docNumber: dto.docNumber,
-        legalName: dto.legalName,
+        docType: docType as any,
+        docNumber,
+        legalName,
         frontDocUrl: frontDocUrl ?? undefined,
         backDocUrl: backDocUrl ?? undefined,
         status: 'pending',

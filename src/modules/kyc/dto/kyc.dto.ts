@@ -1,23 +1,29 @@
-import { IsString, IsOptional, IsEnum } from 'class-validator';
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-
-export enum KycDocType {
-  AADHAAR = 'AADHAAR',
-  PAN = 'PAN',
-  PASSPORT = 'PASSPORT',
-  DL = 'DL',
-}
+import { IsString, IsOptional } from 'class-validator';
+import { ApiPropertyOptional } from '@nestjs/swagger';
 
 export class SubmitKycDocumentDto {
-  @ApiProperty({ enum: KycDocType })
-  @IsEnum(KycDocType)
-  docType: KycDocType;
-
-  @ApiProperty({ example: '1234 5678 9012' })
+  @ApiPropertyOptional({ example: 'AADHAAR' })
   @IsString()
-  docNumber: string;
+  @IsOptional()
+  docType?: string;
 
-  @ApiProperty({ example: 'Shlok Verma' })
+  @ApiPropertyOptional({ example: 'AADHAAR' })
   @IsString()
-  legalName: string;
+  @IsOptional()
+  documentType?: string;
+
+  @ApiPropertyOptional({ example: '1234 5678 9012' })
+  @IsString()
+  @IsOptional()
+  docNumber?: string;
+
+  @ApiPropertyOptional({ example: '1234 5678 9012' })
+  @IsString()
+  @IsOptional()
+  documentNumber?: string;
+
+  @ApiPropertyOptional({ example: 'Shlok Verma' })
+  @IsString()
+  @IsOptional()
+  legalName?: string;
 }

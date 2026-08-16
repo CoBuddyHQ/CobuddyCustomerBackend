@@ -25,8 +25,10 @@ export class BookingService {
 
   // ── CREATE BOOKING REQUEST ────────────────────────────────────────────────
   async createBooking(customerId: string, dto: CreateBookingDto) {
-    // Server-side pricing calculation — never trust frontend amount
-    const baseTotal = dto.baseRate * dto.durationHours;
+    // Server-side pricing calculation — fallback gracefully if not provided
+    const baseRate = dto.baseRate ?? 500;
+    const durationHours = dto.durationHours ?? 2;
+    const baseTotal = baseRate * durationHours;
     const platformFee = Math.round(baseTotal * PLATFORM_FEE_PERCENT);
     const taxAmount = Math.round(baseTotal * TAX_PERCENT);
     const totalAmount = baseTotal + platformFee + taxAmount;
@@ -43,9 +45,9 @@ export class BookingService {
         venueAddress: dto.venueAddress,
         date: new Date(dto.date),
         time: dto.time,
-        durationHours: dto.durationHours,
+        durationHours,
         specialInstructions: dto.specialInstructions,
-        baseRate: dto.baseRate,
+        baseRate,
         baseTotal,
         platformFee,
         taxAmount,

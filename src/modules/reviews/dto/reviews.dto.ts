@@ -7,10 +7,10 @@ export class CreateReviewDto {
   @IsNotEmpty()
   companionId: string;
 
-  @ApiProperty()
+  @ApiPropertyOptional()
   @IsString()
-  @IsNotEmpty()
-  bookingId: string;
+  @IsOptional()
+  bookingId?: string;
 
   @ApiProperty({ example: 5 })
   @IsNumber()
@@ -22,6 +22,11 @@ export class CreateReviewDto {
   @IsString()
   @IsOptional()
   comment?: string;
+
+  @ApiPropertyOptional()
+  @IsString()
+  @IsOptional()
+  text?: string;
 
   @ApiPropertyOptional({ example: 5 })
   @IsNumber()

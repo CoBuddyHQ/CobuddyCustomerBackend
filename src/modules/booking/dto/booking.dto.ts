@@ -48,22 +48,23 @@ export class CreateBookingDto {
   @IsNotEmpty()
   time: string;
 
-  @ApiProperty({ example: 2 })
+  @ApiPropertyOptional({ example: 2 })
   @IsNumber()
-  @IsPositive()
+  @IsOptional()
   @Min(1)
   @Max(8)
-  durationHours: number;
+  durationHours?: number;
 
   @ApiPropertyOptional({ example: 'Please wear smart casuals.' })
   @IsString()
   @IsOptional()
   specialInstructions?: string;
 
-  @ApiProperty({ example: 500 })
+  @ApiPropertyOptional({ example: 500 })
   @IsNumber()
+  @IsOptional()
   @IsPositive()
-  baseRate: number;  // Per hour rate in INR — backend will validate against companion's actual rate
+  baseRate?: number;  // Per hour rate in INR
 }
 
 export class CounterOfferResponseDto {
