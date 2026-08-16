@@ -102,8 +102,20 @@ export class ProfileController {
 
   @Patch('location')
   @ApiOperation({ summary: 'Update customer location coordinates & city' })
-  updateLocation(@CurrentCustomer() customer: any, @Body() body: { latitude?: number; longitude?: number; address?: string; city?: string }) {
+  updateLocation(@CurrentCustomer() customer: any, @Body() body: any) {
     return this.profileService.updateLocation(customer.id, body);
+  }
+
+  @Post('location')
+  @ApiOperation({ summary: 'Set customer location coordinates & city' })
+  setLocation(@CurrentCustomer() customer: any, @Body() body: any) {
+    return this.profileService.updateLocation(customer.id, body);
+  }
+
+  @Post('location/skip')
+  @ApiOperation({ summary: 'Skip customer location step' })
+  skipLocation(@CurrentCustomer() customer: any) {
+    return this.profileService.skipLocation(customer.id);
   }
 
   @Patch('interests')

@@ -78,3 +78,31 @@ export class SubmitLegalConsentDto {
   @IsOptional()
   allAccepted?: boolean;
 }
+
+export class UpdateLocationDto {
+  @ApiPropertyOptional({ example: 19.076 })
+  @IsOptional()
+  latitude?: number;
+
+  @ApiPropertyOptional({ example: 72.8777 })
+  @IsOptional()
+  longitude?: number;
+
+  @ApiPropertyOptional({ example: 'Mumbai' })
+  @IsString()
+  @IsOptional()
+  city?: string;
+
+  @ApiPropertyOptional({ example: 'Bandra West, Mumbai' })
+  @IsString()
+  @IsOptional()
+  address?: string;
+
+  @ApiPropertyOptional({ example: true })
+  @IsOptional()
+  permissionGranted?: boolean;
+
+  @ApiPropertyOptional({ example: false })
+  @IsOptional()
+  skipped?: boolean;
+}

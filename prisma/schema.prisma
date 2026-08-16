@@ -138,6 +138,10 @@ model Customer {
   age           Int?
   gender        String?
   city          String?
+  latitude      Float?
+  longitude     Float?
+  locationAddress String?
+  locationPermissionGranted Boolean @default(false)
   photoUrl      String?
   interests     String[]              @default([])
   spokenLanguages String[]            @default(["English", "Hindi"])

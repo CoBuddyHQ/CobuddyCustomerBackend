@@ -88,14 +88,43 @@ export class ProfileService {
     return { steps, completed, total, percentage };
   }
 
-  async updateLocation(customerId: string, data: { latitude?: number; longitude?: number; address?: string; city?: string }) {
+  async updateLocation(customerId: string, data: any) {
     const customer = await this.prisma.customer.update({
       where: { id: customerId },
       data: {
         ...(data.city && { city: data.city }),
+        ...(data.latitude !== undefined && { latitude: Number(data.latitude) }),
+        ...(data.longitude !== undefined && { longitude: Number(data.longitude) }),
+        ...(data.address && { locationAddress: data.address }),
+        locationPermissionGranted: data.permissionGranted ?? !data.skipped,
+        onboardingStep: 'notification',
       },
     });
-    return { success: true, message: 'Location updated successfully', city: customer.city, latitude: data.latitude, longitude: data.longitude };
+    return {
+      success: true,
+      message: data.skipped ? 'Location step skipped' : 'Location updated successfully',
+      city: customer.city,
+      latitude: customer.latitude,
+      longitude: customer.longitude,
+      locationPermissionGranted: customer.locationPermissionGranted,
+      onboardingStep: customer.onboardingStep,
+    };
+  }
+
+  async skipLocation(customerId: string) {
+    const customer = await this.prisma.customer.update({
+      where: { id: customerId },
+      data: {
+        locationPermissionGranted: false,
+        onboardingStep: 'notification',
+      },
+    });
+    return {
+      success: true,
+      message: 'Location step skipped',
+      locationPermissionGranted: false,
+      onboardingStep: customer.onboardingStep,
+    };
   }
 
   async updateInterests(customerId: string, interests: string[]) {
