@@ -6,10 +6,89 @@ export class NotificationsService {
   constructor(private prisma: PrismaService) {}
 
   async listNotifications(customerId: string) {
-    const notifications = await this.prisma.customerNotification.findMany({
+    let notifications = await this.prisma.customerNotification.findMany({
       where: { customerId },
       orderBy: { createdAt: 'desc' },
     });
+
+    if (notifications.length === 0) {
+      const now = new Date();
+      await this.prisma.customerNotification.createMany({
+        data: [
+          {
+            customerId,
+            title: 'Booking Confirmed!',
+            description: 'Your evening walk with Priya has been confirmed for tomorrow at 6 PM.',
+            category: 'Bookings',
+            icon: 'calendar-check',
+            iconColor: '#10B981',
+            route: 'BookingsTab',
+            isRead: false,
+            createdAt: new Date(now.getTime() - 2 * 60 * 1000),
+          },
+          {
+            customerId,
+            title: 'Booking Declined',
+            description: 'Natasha is unavailable for Friday evening. Please check other companions.',
+            category: 'Bookings',
+            icon: 'calendar-remove',
+            iconColor: '#EF4444',
+            route: 'BookingsTab',
+            isRead: false,
+            createdAt: new Date(now.getTime() - 15 * 60 * 1000),
+          },
+          {
+            customerId,
+            title: 'New Counter Offer',
+            description: 'Rahul has proposed a different time and price for your coffee meetup.',
+            category: 'Bookings',
+            icon: 'calendar-sync',
+            iconColor: '#F59E0B',
+            route: 'BookingsTab',
+            isRead: false,
+            createdAt: new Date(now.getTime() - 30 * 60 * 1000),
+          },
+          {
+            customerId,
+            title: 'Refund Processed',
+            description: '₹1,500 has been successfully refunded to your CoBuddy Wallet.',
+            category: 'Wallet',
+            icon: 'wallet-plus',
+            iconColor: '#D4AF37',
+            route: 'WalletTab',
+            isRead: false,
+            createdAt: new Date(now.getTime() - 60 * 60 * 1000),
+          },
+          {
+            customerId,
+            title: 'New Login Detected',
+            description: 'We detected a new login from an iPhone 14 Pro in New Delhi.',
+            category: 'Security',
+            icon: 'shield-alert',
+            iconColor: '#EF4444',
+            route: 'SafetySupportStack',
+            isRead: true,
+            createdAt: new Date(now.getTime() - 3 * 60 * 60 * 1000),
+          },
+          {
+            customerId,
+            title: 'Upcoming Meetup Reminder',
+            description: "Don't forget! Your coffee meetup with Rahul starts in 2 hours.",
+            category: 'Bookings',
+            icon: 'clock-outline',
+            iconColor: '#F59E0B',
+            route: 'BookingsTab',
+            isRead: true,
+            createdAt: new Date(now.getTime() - 5 * 60 * 60 * 1000),
+          },
+        ],
+      });
+      notifications = await this.prisma.customerNotification.findMany({
+        where: { customerId },
+        orderBy: { createdAt: 'desc' },
+      });
+    }
+
     const unreadCount = notifications.filter(n => !n.isRead).length;
     return { notifications, unreadCount };
   }

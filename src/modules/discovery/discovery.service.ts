@@ -11,6 +11,54 @@ export class DiscoveryService {
   // Fallback mock dataset for initial seed / offline query compatibility if companion tables are separate
   private defaultCompanions = [
     {
+      id: 'c4',
+      name: 'Natasha',
+      initials: 'N',
+      title: 'Chill hangout & cafe conversations',
+      bio: 'Friendly companion who loves discovering quirky coffee shops, books, and great conversations.',
+      activities: ['Cafe Hopping', 'Coffee', 'Conversation'],
+      trustScore: 95,
+      rating: 4.9,
+      reviewsCount: 60,
+      sessionsCount: 140,
+      rate: 350,
+      formattedRate: '₹350 /hr',
+      distance: '2.0 km away',
+      isOnline: true,
+      category: 'coffee',
+      gender: 'Female',
+      city: 'Mumbai',
+      photos: ['https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=800'],
+      languages: ['English', 'Hindi'],
+      hobbies: ['Cafe Hopping', 'Coffee', 'Podcasts'],
+      rules: ['Public places only', 'No smoking'],
+      verifications: ['ID Verified', 'Phone Verified'],
+    },
+    {
+      id: 'c5',
+      name: 'Sophia Patel',
+      initials: 'SP',
+      title: 'Film buff & entertainment companion',
+      bio: 'Cinema lover, festival goer and entertainment buff. Let us watch a great film and discuss directors cuts!',
+      activities: ['Movies', 'Entertainment', 'Networking'],
+      trustScore: 99,
+      rating: 4.7,
+      reviewsCount: 210,
+      sessionsCount: 512,
+      rate: 600,
+      formattedRate: '₹600 /hr',
+      distance: '1.2 km away',
+      isOnline: true,
+      category: 'movie',
+      gender: 'Female',
+      city: 'Mumbai',
+      photos: ['https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&q=80&w=800'],
+      languages: ['English', 'Hindi', 'Gujarati'],
+      hobbies: ['Cinema', 'Film Making', 'Music'],
+      rules: ['Public places only'],
+      verifications: ['ID Verified', 'Background Checked', 'Phone Verified'],
+    },
+    {
       id: 'c1',
       name: 'Elena Vasquez',
       initials: 'EV',
@@ -25,7 +73,7 @@ export class DiscoveryService {
       formattedRate: '₹500 /hr',
       distance: '2.5 km away',
       isOnline: true,
-      category: 'conversation',
+      category: 'coffee',
       gender: 'Female',
       city: 'Mumbai',
       photos: [
@@ -76,7 +124,7 @@ export class DiscoveryService {
       formattedRate: '₹450 /hr',
       distance: '4.0 km away',
       isOnline: true,
-      category: 'movie',
+      category: 'study',
       gender: 'Male',
       city: 'Mumbai',
       photos: ['https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=800'],
@@ -85,6 +133,30 @@ export class DiscoveryService {
       rules: ['Public places only'],
       verifications: ['ID Verified', 'Background Checked'],
     },
+    {
+      id: 'c6',
+      name: 'Aarav Mehta',
+      initials: 'AM',
+      title: 'Study partner & coding mentor',
+      bio: 'Tech enthusiast and study buddy. Great for focused co-working and tech discussions.',
+      activities: ['Study Buddy', 'Technology', 'Networking'],
+      trustScore: 98,
+      rating: 4.92,
+      reviewsCount: 95,
+      sessionsCount: 180,
+      rate: 450,
+      formattedRate: '₹450 /hr',
+      distance: '3.5 km away',
+      isOnline: true,
+      category: 'study',
+      gender: 'Male',
+      city: 'Bangalore',
+      photos: ['https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&q=80&w=800'],
+      languages: ['English', 'Hindi'],
+      hobbies: ['Programming', 'Chess', 'Reading'],
+      rules: ['Public places only', 'Focus hours'],
+      verifications: ['ID Verified', 'Phone Verified'],
+    },
   ];
 
   async getCompanions(filter: CompanionFilterDto) {
@@ -92,7 +164,10 @@ export class DiscoveryService {
 
     if (filter.category) {
       const cat = filter.category.toLowerCase();
-      result = result.filter(c => c.category.toLowerCase() === cat);
+      result = result.filter(c => 
+        c.category.toLowerCase() === cat || 
+        c.activities.some(a => a.toLowerCase().includes(cat))
+      );
     }
     if (filter.gender) {
       const gen = filter.gender.toLowerCase();
@@ -101,7 +176,14 @@ export class DiscoveryService {
     if (filter.search) {
       const q = filter.search.toLowerCase();
       result = result.filter(
-        c => c.name.toLowerCase().includes(q) || c.title.toLowerCase().includes(q) || c.city.toLowerCase().includes(q),
+        c => c.name.toLowerCase().includes(q) || 
+             c.title.toLowerCase().includes(q) || 
+             c.city.toLowerCase().includes(q) ||
+             c.category.toLowerCase().includes(q) ||
+             (q.includes('coffee') && (c.category === 'coffee' || c.activities.some(a => a.toLowerCase().includes('coffee')))) ||
+             (q.includes('movie') && (c.category === 'movie' || c.activities.some(a => a.toLowerCase().includes('movie')))) ||
+             (q.includes('study') && (c.category === 'study' || c.activities.some(a => a.toLowerCase().includes('study')))) ||
+             c.activities.some(a => a.toLowerCase().includes(q))
       );
     }
     if (filter.isOnline !== undefined) {
