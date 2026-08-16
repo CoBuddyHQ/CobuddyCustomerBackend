@@ -162,36 +162,60 @@ export class DiscoveryService {
   async getCompanions(filter: CompanionFilterDto) {
     let result = [...this.defaultCompanions];
 
-    if (filter.category) {
-      const cat = filter.category.toLowerCase();
+    if (filter.category && filter.category.trim()) {
+      const cat = filter.category.toLowerCase().trim();
       result = result.filter(c => 
-        c.category.toLowerCase() === cat || 
-        c.activities.some(a => a.toLowerCase().includes(cat))
+        c.category.toLowerCase().includes(cat) || 
+        c.activities.some(a => a.toLowerCase().includes(cat)) ||
+        (cat.includes('coffee') && (c.category === 'coffee' || c.activities.some(a => a.toLowerCase().includes('coffee')))) ||
+        (cat.includes('movie') && (c.category === 'movie' || c.activities.some(a => a.toLowerCase().includes('movie')))) ||
+        (cat.includes('study') && (c.category === 'study' || c.activities.some(a => a.toLowerCase().includes('study')))) ||
+        (cat.includes('city') && (c.category === 'city' || c.category === 'coffee' || c.activities.some(a => a.toLowerCase().includes('city') || a.toLowerCase().includes('walk') || a.toLowerCase().includes('culture'))))
       );
     }
-    if (filter.gender) {
-      const gen = filter.gender.toLowerCase();
+    if (filter.gender && filter.gender.toLowerCase() !== 'any') {
+      const gen = filter.gender.toLowerCase().trim();
       result = result.filter(c => c.gender.toLowerCase() === gen);
     }
-    if (filter.search) {
-      const q = filter.search.toLowerCase();
+    if (filter.city && filter.city.trim()) {
+      const cit = filter.city.toLowerCase().trim();
+      result = result.filter(c => c.city.toLowerCase().includes(cit));
+    }
+    if (filter.search && filter.search.trim()) {
+      const q = filter.search.toLowerCase().trim();
       result = result.filter(
         c => c.name.toLowerCase().includes(q) || 
              c.title.toLowerCase().includes(q) || 
              c.city.toLowerCase().includes(q) ||
              c.category.toLowerCase().includes(q) ||
-             (q.includes('coffee') && (c.category === 'coffee' || c.activities.some(a => a.toLowerCase().includes('coffee')))) ||
-             (q.includes('movie') && (c.category === 'movie' || c.activities.some(a => a.toLowerCase().includes('movie')))) ||
-             (q.includes('study') && (c.category === 'study' || c.activities.some(a => a.toLowerCase().includes('study')))) ||
-             c.activities.some(a => a.toLowerCase().includes(q))
+             c.activities.some(a => a.toLowerCase().includes(q)) ||
+             c.languages.some(l => l.toLowerCase().includes(q)) ||
+             c.hobbies.some(h => h.toLowerCase().includes(q))
       );
     }
     if (filter.isOnline !== undefined) {
       result = result.filter(c => c.isOnline === filter.isOnline);
     }
-    if (filter.maxPrice) {
-      const maxP = filter.maxPrice;
-      result = result.filter(c => c.rate <= maxP);
+    if (filter.maxPrice !== undefined && filter.maxPrice !== null) {
+      const maxP = Number(filter.maxPrice);
+      if (!isNaN(maxP)) {
+        result = result.filter(c => c.rate <= maxP);
+      }
+    }
+    if (filter.minRating !== undefined && filter.minRating !== null) {
+      const minR = Number(filter.minRating);
+      if (!isNaN(minR)) {
+        result = result.filter(c => (c.rating ?? 0) >= minR);
+      }
+    }
+    if (filter.maxDistance !== undefined && filter.maxDistance !== null) {
+      const maxD = Number(filter.maxDistance);
+      if (!isNaN(maxD)) {
+        result = result.filter(c => {
+          const distNum = parseFloat(c.distance);
+          return isNaN(distNum) || distNum <= maxD;
+        });
+      }
     }
 
     const page = filter.page || 1;

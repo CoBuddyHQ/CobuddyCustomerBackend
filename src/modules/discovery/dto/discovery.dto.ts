@@ -28,6 +28,11 @@ export class CompanionFilterDto {
   maxPrice?: number;
 
   @ApiPropertyOptional()
+  @IsNumber()
+  @IsOptional()
+  maxDistance?: number;
+
+  @ApiPropertyOptional()
   @IsBoolean()
   @IsOptional()
   isOnline?: boolean;
