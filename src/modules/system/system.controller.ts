@@ -38,8 +38,7 @@ export const ADMIN_VALUES = {
   ],
   kycDocTypes: ['AADHAAR', 'PAN', 'PASSPORT', 'DRIVING_LICENSE', 'VOTER_ID'],
   spokenLanguages: [
-    'English', 'Hindi', 'Bengali', 'Marathi', 'Telugu', 'Tamil', 'Gujarati',
-    'Urdu', 'Kannada', 'Odia', 'Malayalam', 'Punjabi', 'Assamese', 'Hinglish', 'French'
+    'en', 'hi', 'mr', 'gu', 'bn', 'ta', 'te', 'kn', 'ml', 'pa', 'ur', 'or', 'hinglish', 'fr', 'es'
   ],
   genderOptions: ['Male', 'Female', 'Non-binary', 'Prefer not to say'],
   notificationCategories: [
@@ -47,19 +46,19 @@ export const ADMIN_VALUES = {
     'policy', 'training', 'system', 'wallet', 'promotion', 'reminder'
   ],
   activityCategories: [
-    { id: 'INT-1', title: 'Cafe Conversation', icon: 'coffee-outline', multiplier: 1.0, description: 'Casual conversation at a cafe' },
-    { id: 'INT-2', title: 'City Walk', icon: 'walk', multiplier: 1.0, description: 'Explore the city together on foot' },
-    { id: 'INT-3', title: 'Art & Culture', icon: 'palette-outline', multiplier: 1.2, description: 'Visit museums and art galleries' },
-    { id: 'INT-4', title: 'Food & Dining', icon: 'silverware-fork-knife', multiplier: 1.1, description: 'Explore local food and restaurants' },
-    { id: 'INT-5', title: 'Shopping Assistance', icon: 'shopping-outline', multiplier: 1.0, description: 'Shopping companion and styling advice' },
-    { id: 'INT-6', title: 'Movies & Cinema', icon: 'movie-outline', multiplier: 1.0, description: 'Watch movies together in public theaters' },
-    { id: 'INT-7', title: 'Study & Work', icon: 'book-open-outline', multiplier: 0.9, description: 'Quiet work or study companionship' },
-    { id: 'INT-8', title: 'Events & Concerts', icon: 'ticket-outline', multiplier: 1.3, description: 'Attend public cultural events or concerts' },
-    { id: 'INT-9', title: 'Business Networking', icon: 'briefcase-outline', multiplier: 1.4, description: 'Professional companion for networking' },
-    { id: 'INT-10', title: 'Bookstore & Library', icon: 'bookshelf', multiplier: 0.9, description: 'Browse books and quiet literature talk' },
-    { id: 'INT-11', title: 'Wellness & Fitness Walk', icon: 'heart-pulse', multiplier: 1.0, description: 'Outdoor walking and wellness chats' },
-    { id: 'INT-12', title: 'Sightseeing Tour', icon: 'city-variant-outline', multiplier: 1.25, description: 'Curated historical and city tours' },
-    { id: 'INT-13', title: 'Board Games & Arcades', icon: 'gamepad-variant-outline', multiplier: 1.1, description: 'Play board games or arcade gaming in public venues' },
+    { id: 'INT-1', label: 'Italian Cuisine', type: 'CUISINE', multiplier: 1.0, icon: 'pizza', title: 'Italian Cuisine' },
+    { id: 'INT-2', label: 'Museums', type: 'ACTIVITY', multiplier: 1.2, icon: 'bank', title: 'Museums' },
+    { id: 'INT-3', label: 'Cafe Hopping', type: 'ACTIVITY', multiplier: 1.0, icon: 'coffee', title: 'Cafe Hopping' },
+    { id: 'INT-4', label: 'Movies', type: 'ACTIVITY', multiplier: 1.0, icon: 'popcorn', title: 'Movies' },
+    { id: 'INT-5', label: 'Concerts', type: 'ACTIVITY', multiplier: 1.5, icon: 'ticket-confirmation', title: 'Concerts' },
+    { id: 'INT-6', label: 'Parks', type: 'ACTIVITY', multiplier: 1.0, icon: 'tree', title: 'Parks' },
+    { id: 'INT-7', label: 'Sightseeing', type: 'ACTIVITY', multiplier: 1.2, icon: 'camera', title: 'Sightseeing' },
+    { id: 'INT-8', label: 'Clubbing', type: 'ACTIVITY', multiplier: 1.5, icon: 'glass-cocktail', title: 'Clubbing' },
+    { id: 'INT-9', label: 'Art Galleries', type: 'ACTIVITY', multiplier: 1.2, icon: 'palette', title: 'Art Galleries' },
+    { id: 'INT-10', label: 'Hiking', type: 'ACTIVITY', multiplier: 1.5, icon: 'hiking', title: 'Hiking' },
+    { id: 'INT-11', label: 'Board Games', type: 'ACTIVITY', multiplier: 1.0, icon: 'dice-multiple', title: 'Board Games' },
+    { id: 'INT-12', label: 'Karaoke', type: 'ACTIVITY', multiplier: 1.2, icon: 'microphone', title: 'Karaoke' },
+    { id: 'INT-13', label: 'Gaming', type: 'ACTIVITY', multiplier: 1.0, icon: 'controller-classic', title: 'Gaming' },
   ],
 };
 
