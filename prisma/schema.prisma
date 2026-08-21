@@ -32,6 +32,8 @@ enum CustomerKycDocType {
   PAN
   PASSPORT
   DL
+  DRIVING_LICENSE
+  VOTER_ID
 }
 
 enum CustomerBookingStatus {
@@ -54,9 +56,11 @@ enum CustomerSessionStatus {
   pre_arrival
   checked_in
   active
+  extending
   completed
   cancelled
   no_show
+  disputed
 }
 
 enum CustomerPaymentStatus {
@@ -277,6 +281,8 @@ model CustomerTrustedContact {
   customerId   String
   name         String
   phone        String
+  maskedPhone  String?
+  shareLocation Boolean @default(false)
   relationship String
   createdAt    DateTime @default(now())
 
@@ -317,6 +323,12 @@ model CustomerBooking {
   venueId             String?
   venueName           String
   venueAddress        String?
+  venueArea           String?
+  venueCity           String?
+  venueType           String?
+  meetingPoint        String?
+  landmark            String?
+  isApproved          Boolean               @default(true)
   date                DateTime
   time                String
   durationHours       Float                 @default(1)
@@ -619,6 +631,7 @@ model CustomerReview {
   bookingId     String
   rating        Float
   comment       String?
+  tags          String[] @default([])
   punctuality   Float?
   communication Float?
   behavior      Float?
