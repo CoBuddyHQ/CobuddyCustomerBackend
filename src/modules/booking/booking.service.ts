@@ -17,6 +17,23 @@ import {
 const PLATFORM_FEE_PERCENT = 0.05; // 5%
 const TAX_PERCENT = 0.018; // 1.8% GST approximation
 
+// Authoritative Activity Multipliers
+const ACTIVITY_MULTIPLIERS: Record<string, number> = {
+  'INT-1': 1.0,
+  'INT-2': 1.2,
+  'INT-3': 1.0,
+  'INT-4': 1.0,
+  'INT-5': 1.5,
+  'INT-6': 1.0,
+  'INT-7': 1.2,
+  'INT-8': 1.5,
+  'INT-9': 1.2,
+  'INT-10': 1.5,
+  'INT-11': 1.0,
+  'INT-12': 1.2,
+  'INT-13': 1.0,
+};
+
 @Injectable()
 export class BookingService {
   private readonly logger = new Logger(BookingService.name);
@@ -25,29 +42,61 @@ export class BookingService {
 
   // ── CREATE BOOKING REQUEST ────────────────────────────────────────────────
   async createBooking(customerId: string, dto: CreateBookingDto) {
-    // Server-side pricing calculation — fallback gracefully if not provided
-    const baseRate = dto.baseRate ?? 500;
+    const actId = dto.activityId || 'INT-1';
+    const multiplier = ACTIVITY_MULTIPLIERS[actId] || 1.0;
+    
+    // Server-side authoritative pricing
+    const baseRate = (dto.baseRate ?? 500) * multiplier;
     const durationHours = dto.durationHours ?? 2;
-    const baseTotal = baseRate * durationHours;
+    const baseTotal = Math.round(baseRate * durationHours);
     const platformFee = Math.round(baseTotal * PLATFORM_FEE_PERCENT);
     const taxAmount = Math.round(baseTotal * TAX_PERCENT);
     const totalAmount = baseTotal + platformFee + taxAmount;
+
+    const vName = dto.venue?.name || dto.venueName || 'Public Venue';
+    const vArea = dto.venue?.area || '';
+    const vCity = dto.venue?.city || '';
+    const vType = dto.venue?.venueType || 'cafe';
+    const vMeeting = dto.venue?.meetingPoint || '';
+    const vLandmark = dto.venue?.landmark || '';
+    const vApproved = dto.venue?.isApproved ?? true;
+    const vId = dto.venue?.venueId || undefined;
+
+    let startDate: Date;
+    if (dto.scheduledStart) {
+      startDate = new Date(dto.scheduledStart);
+    } else if (dto.date) {
+      startDate = new Date(dto.date);
+    } else {
+      startDate = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    }
+
+    const timeStr = dto.time || startDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const activityTitle = dto.activityName || dto.activity || 'Activity';
 
     const booking = await this.prisma.customerBooking.create({
       data: {
         customerId,
         companionId: dto.companionId,
         companionName: dto.companionName,
-        activityId: dto.activityId,
-        activityName: dto.activityName,
+        activityId: actId,
+        activityName: activityTitle,
         activityIcon: dto.activityIcon,
-        venueName: dto.venueName,
-        venueAddress: dto.venueAddress,
-        date: new Date(dto.date),
-        time: dto.time,
+        venueId: vId,
+        venueName: vName,
+        venueAddress: dto.venueAddress || `${vName}, ${vArea} ${vCity}`.trim(),
+        venueArea: vArea,
+        venueCity: vCity,
+        venueType: vType,
+        meetingPoint: vMeeting,
+        landmark: vLandmark,
+        isApproved: vApproved,
+        date: startDate,
+        time: timeStr,
         durationHours,
         specialInstructions: dto.specialInstructions,
         baseRate,
+        durationMultiplier: multiplier,
         baseTotal,
         platformFee,
         taxAmount,
@@ -62,7 +111,7 @@ export class BookingService {
         customerId,
         title: 'Booking Request Sent',
         description: `Your request to ${dto.companionName || 'companion'} has been sent.`,
-        category: 'Bookings',
+        category: 'request',
         icon: 'calendar-clock',
         iconColor: '#D4AF37',
         route: 'BookingDetailScreen',
@@ -87,10 +136,11 @@ export class BookingService {
 
     const bookings = await this.prisma.customerBooking.findMany({
       where,
+      include: { sessions: true },
       orderBy: { createdAt: 'desc' },
     });
 
-    return bookings.map(this.buildBookingResponse);
+    return bookings.map(b => this.buildBookingResponse(b));
   }
 
   // ── GET BOOKING DETAIL ────────────────────────────────────────────────────
@@ -103,7 +153,7 @@ export class BookingService {
     return this.buildBookingResponse(booking);
   }
 
-  // ── CANCEL BOOKING ────────────────────────────────────────────────────────
+  // ── CANCEL BOOKING (Tiered Refund Calculation) ────────────────────────────
   async cancelBooking(customerId: string, bookingId: string, dto: CancelBookingDto) {
     const booking = await this.prisma.customerBooking.findFirst({
       where: { id: bookingId, customerId },
@@ -115,6 +165,22 @@ export class BookingService {
       throw new BadRequestException(`Cannot cancel a booking with status: ${booking.status}`);
     }
 
+    // Calculate hours remaining until booking date
+    const now = new Date();
+    const bookingTime = new Date(booking.date);
+    const diffHours = (bookingTime.getTime() - now.getTime()) / (1000 * 60 * 60);
+
+    let refundPercent = 100;
+    if (diffHours >= 48) {
+      refundPercent = 100;
+    } else if (diffHours >= 24) {
+      refundPercent = 50;
+    } else {
+      refundPercent = 0;
+    }
+
+    const refundAmount = Math.round((booking.totalAmount * refundPercent) / 100);
+
     const updated = await this.prisma.customerBooking.update({
       where: { id: bookingId },
       data: {
@@ -124,7 +190,16 @@ export class BookingService {
       },
     });
 
-    return this.buildBookingResponse(updated);
+    const response = this.buildBookingResponse(updated);
+    return {
+      ...response,
+      cancellationSummary: {
+        hoursBeforeStart: Math.round(diffHours),
+        refundPercent,
+        refundAmount,
+        policyApplied: diffHours >= 48 ? '48h+ Tier (100%)' : (diffHours >= 24 ? '24-48h Tier (50%)' : '<24h Tier (0%)'),
+      },
+    };
   }
 
   // ── MODIFY BOOKING ────────────────────────────────────────────────────────
@@ -193,23 +268,53 @@ export class BookingService {
     return { message: 'Dispute filed successfully. Our team will review within 24-48 hours.' };
   }
 
-  // ── HELPER ────────────────────────────────────────────────────────────────
+  // ── HELPER: BUILD RICH STRUCTURED RESPONSE ────────────────────────────────
   private buildBookingResponse(booking: any) {
+    const startDate = new Date(booking.date);
+    const durationMs = (booking.durationHours || 1) * 60 * 60 * 1000;
+    const endDate = new Date(startDate.getTime() + durationMs);
+
+    const venueObj = {
+      venueId: booking.venueId || `v-${booking.id.slice(0, 6)}`,
+      name: booking.venueName || 'Public Venue',
+      area: booking.venueArea || '',
+      city: booking.venueCity || '',
+      isApproved: booking.isApproved ?? true,
+      venueType: booking.venueType || 'cafe',
+      meetingPoint: booking.meetingPoint || 'Main entrance seating',
+      landmark: booking.landmark || '',
+    };
+
+    const activeSession = booking.sessions?.[0];
+
     return {
       id: booking.id,
       bookingRef: booking.bookingRef,
       companionId: booking.companionId,
       companionName: booking.companionName,
+      activity: booking.activityName,
       activityId: booking.activityId,
       activityName: booking.activityName,
       activityIcon: booking.activityIcon,
+      venue: venueObj,
       venueName: booking.venueName,
       venueAddress: booking.venueAddress,
+      scheduledStart: startDate.toISOString(),
+      scheduledEnd: endDate.toISOString(),
       date: booking.date,
       time: booking.time,
       durationHours: booking.durationHours,
       specialInstructions: booking.specialInstructions,
+      requestStatus: booking.status,
+      sessionStatus: activeSession?.status || (booking.status === 'accepted' ? 'upcoming' : undefined),
       status: booking.status,
+      sessionPassCode: activeSession?.passCode || 'CB-1234',
+      safetyTimerActive: false,
+      earningsBreakdown: {
+        base: booking.baseTotal,
+        tip: 0,
+        total: booking.totalAmount,
+      },
       pricing: {
         baseRate: booking.baseRate,
         durationHours: booking.durationHours,

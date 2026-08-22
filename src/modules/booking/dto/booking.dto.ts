@@ -3,6 +3,47 @@ import {
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
+export class VenueDto {
+  @ApiPropertyOptional({ example: 'v-1' })
+  @IsString()
+  @IsOptional()
+  venueId?: string;
+
+  @ApiProperty({ example: 'Blue Tokai Coffee' })
+  @IsString()
+  @IsNotEmpty()
+  name: string;
+
+  @ApiPropertyOptional({ example: 'Connaught Place' })
+  @IsString()
+  @IsOptional()
+  area?: string;
+
+  @ApiPropertyOptional({ example: 'New Delhi' })
+  @IsString()
+  @IsOptional()
+  city?: string;
+
+  @ApiPropertyOptional({ example: true })
+  @IsOptional()
+  isApproved?: boolean;
+
+  @ApiPropertyOptional({ example: 'cafe' })
+  @IsString()
+  @IsOptional()
+  venueType?: string;
+
+  @ApiPropertyOptional({ example: 'Main Entrance' })
+  @IsString()
+  @IsOptional()
+  meetingPoint?: string;
+
+  @ApiPropertyOptional({ example: 'Opposite Metro Gate 2' })
+  @IsString()
+  @IsOptional()
+  landmark?: string;
+}
+
 export class CreateBookingDto {
   @ApiProperty({ example: 'companion-uuid-here' })
   @IsString()
@@ -14,10 +55,15 @@ export class CreateBookingDto {
   @IsOptional()
   companionName?: string;
 
-  @ApiProperty({ example: 'Coffee Meetup' })
+  @ApiPropertyOptional({ example: 'Coffee Meetup' })
   @IsString()
-  @IsNotEmpty()
-  activityName: string;
+  @IsOptional()
+  activity?: string;
+
+  @ApiPropertyOptional({ example: 'Coffee Meetup' })
+  @IsString()
+  @IsOptional()
+  activityName?: string;
 
   @ApiPropertyOptional({ example: 'a1' })
   @IsString()
@@ -29,24 +75,36 @@ export class CreateBookingDto {
   @IsOptional()
   activityIcon?: string;
 
-  @ApiProperty({ example: 'Blue Tokai Coffee, CP' })
+  @ApiPropertyOptional()
+  @IsOptional()
+  venue?: VenueDto;
+
+  @ApiPropertyOptional({ example: 'Blue Tokai Coffee, CP' })
   @IsString()
-  @IsNotEmpty()
-  venueName: string;
+  @IsOptional()
+  venueName?: string;
 
   @ApiPropertyOptional({ example: 'Connaught Place, New Delhi' })
   @IsString()
   @IsOptional()
   venueAddress?: string;
 
-  @ApiProperty({ example: '2026-10-24T00:00:00.000Z' })
-  @IsDateString()
-  date: string;
+  @ApiPropertyOptional({ example: '2026-10-24T00:00:00.000Z' })
+  @IsOptional()
+  date?: string;
 
-  @ApiProperty({ example: '7:00 PM' })
+  @ApiPropertyOptional({ example: '7:00 PM' })
   @IsString()
-  @IsNotEmpty()
-  time: string;
+  @IsOptional()
+  time?: string;
+
+  @ApiPropertyOptional({ example: '2026-10-24T19:00:00.000Z' })
+  @IsOptional()
+  scheduledStart?: string;
+
+  @ApiPropertyOptional({ example: '2026-10-24T21:00:00.000Z' })
+  @IsOptional()
+  scheduledEnd?: string;
 
   @ApiPropertyOptional({ example: 2 })
   @IsNumber()
