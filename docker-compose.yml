@@ -1,4 +1,25 @@
+# =============================================================
+# CoBuddy Customer Backend — Docker Compose (Development)
+#
+# Usage on any machine:
+#   git clone <repo>
+#   cd cobuddy-customer-backend
+#   docker compose up -d --build
+#
+# Prisma commands (inside container):
+#   docker compose exec backend npx prisma generate
+#   docker compose exec backend npx prisma migrate deploy
+#   docker compose exec backend npx prisma studio
+#
+# Version checks (inside container):
+#   docker compose exec backend node -v
+#   docker compose exec backend npm -v
+#   docker compose exec backend npx prisma -v
+# =============================================================
+
 services:
+
+  # ─── PostgreSQL Database ─────────────────────────────────
   postgres:
     image: postgres:16-alpine
     container_name: cobuddy_customer_postgres
@@ -8,33 +29,38 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-cobuddy}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-development-secret-password-2026}
     ports:
-      - "5433:5432"
+      - "5433:5432"       # Host 5433 → Container 5432 (avoids conflict with local PG)
     volumes:
       - cobuddy_customer_postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-cobuddy} -d ${POSTGRES_DB:-cobuddy_customer_db}"]
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
+      start_period: 10s
     networks:
-      - cobuddy_network
+      - cobuddy_customer_network
 
+  # ─── Redis Cache ─────────────────────────────────────────
   redis:
     image: redis:7-alpine
     container_name: cobuddy_customer_redis
     restart: unless-stopped
     ports:
-      - "6380:6379"
+      - "6380:6379"       # Host 6380 → Container 6379 (avoids conflict with local Redis)
     volumes:
       - cobuddy_customer_redis_data:/data
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
+      start_period: 5s
     networks:
-      - cobuddy_network
+      - cobuddy_customer_network
 
+  # ─── NestJS Backend ──────────────────────────────────────
   backend:
     build:
       context: .
@@ -44,37 +70,57 @@ services:
     environment:
       NODE_ENV: development
       PORT: 4002
+
+      # Points to the postgres SERVICE NAME — works on any laptop automatically
       DATABASE_URL: postgresql://${POSTGRES_USER:-cobuddy}:${POSTGRES_PASSWORD:-development-secret-password-2026}@postgres:5432/${POSTGRES_DB:-cobuddy_customer_db}?schema=public
+
       REDIS_URL: redis://redis:6379
+
       JWT_SECRET: ${JWT_SECRET:-cobuddy-customer-super-secret-jwt-key-2026}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-cobuddy-customer-super-secret-refresh-key-2026}
+
       RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID:-rzp_test_TLCpKIamWxQBYy}
       RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET:-w2l3tVjYk6aH4zM9xQ8pL7nR}
+
       OTP_DEV_BYPASS: ${OTP_DEV_BYPASS:-123456}
+
     ports:
       - "4002:4002"
+
     volumes:
+      # Live reload: mount src so changes reflect without rebuild
       - ./src:/app/src
       - ./prisma:/app/prisma
+      # Persist uploaded files
       - ./uploads:/app/uploads
+      # Prevent host node_modules from overwriting container's
+      - /app/node_modules
+
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+
     healthcheck:
       test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:4002/health', (r) => { process.exit(r.statusCode === 200 ? 0 : 1); });\""]
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 15s
-    networks:
-      - cobuddy_network
+      start_period: 30s
 
+    networks:
+      - cobuddy_customer_network
+
+# ─── Named Volumes ─────────────────────────────────────────
 volumes:
   cobuddy_customer_postgres_data:
+    driver: local
   cobuddy_customer_redis_data:
+    driver: local
 
+# ─── Isolated Network ──────────────────────────────────────
 networks:
-  cobuddy_network:
+  cobuddy_customer_network:
     driver: bridge
+    name: cobuddy_customer_network

@@ -190,6 +190,37 @@ export class BookingService {
       },
     });
 
+    // Process wallet refund if applicable
+    if (refundAmount > 0) {
+      // Update wallet balance
+      await this.prisma.customerWallet.updateMany({
+        where: { customerId },
+        data: { balance: { increment: refundAmount } },
+      });
+      // Create refund transaction record
+      await this.prisma.customerTransaction.create({
+        data: {
+          customerId,
+          bookingId,
+          type: 'refund',
+          amount: refundAmount,
+          description: `Refund — Booking Cancelled (${refundPercent}% policy applied)`,
+          status: 'completed',
+        },
+      }).catch(() => {}); // non-fatal
+      // Send notification
+      await this.prisma.customerNotification.create({
+        data: {
+          customerId,
+          title: `Refund of ₹${refundAmount} Processed`,
+          description: `Your ${refundPercent}% refund has been added to your CoBuddy wallet.`,
+          category: 'payment',
+          icon: 'wallet',
+          iconColor: '#27AE60',
+        },
+      }).catch(() => {});
+    }
+
     const response = this.buildBookingResponse(updated);
     return {
       ...response,
@@ -308,7 +339,7 @@ export class BookingService {
       requestStatus: booking.status,
       sessionStatus: activeSession?.status || (booking.status === 'accepted' ? 'upcoming' : undefined),
       status: booking.status,
-      sessionPassCode: activeSession?.passCode || 'CB-1234',
+      sessionPassCode: activeSession?.passCode ?? null,
       safetyTimerActive: false,
       earningsBreakdown: {
         base: booking.baseTotal,

@@ -41,6 +41,13 @@ export class WalletService {
 
     return {
       transactions: transactions.map(this.buildTransactionResponse),
+      data: transactions.map(this.buildTransactionResponse),
+      // Top-level for frontend: raw?.total ?? raw?.data?.length
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+      // Nested for backwards compat
       pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
     };
   }
