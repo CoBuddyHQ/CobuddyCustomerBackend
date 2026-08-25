@@ -176,23 +176,48 @@ export class ProfileService {
 
     const completedSteps: string[] = [];
     if (customer.safetyAgreementAccepted || customer.tosAccepted) completedSteps.push('legal_consent');
-    if (customer.city) completedSteps.push('location');
-    if (customer.name && customer.gender) completedSteps.push('profile_setup');
-    if (customer.interests && customer.interests.length > 0) completedSteps.push('interests');
-    if (customer.trustedContacts && customer.trustedContacts.length > 0) completedSteps.push('trusted_contacts');
+    if (
+      customer.city ||
+      customer.locationPermissionGranted ||
+      customer.onboardingStep === 'notification' ||
+      customer.onboardingStep === 'profile_setup' ||
+      customer.onboardingStep === 'interests' ||
+      customer.onboardingStep === 'safety_tutorial' ||
+      customer.onboardingStep === 'trusted_contacts'
+    ) {
+      completedSteps.push('location');
+    }
+    if (
+      (customer.name && customer.gender) ||
+      customer.onboardingStep === 'interests' ||
+      customer.onboardingStep === 'safety_tutorial' ||
+      customer.onboardingStep === 'trusted_contacts'
+    ) {
+      completedSteps.push('profile_setup');
+    }
+    if (
+      (customer.interests && customer.interests.length > 0) ||
+      customer.onboardingStep === 'safety_tutorial' ||
+      customer.onboardingStep === 'trusted_contacts'
+    ) {
+      completedSteps.push('interests');
+    }
+    if (
+      (customer.trustedContacts && customer.trustedContacts.length > 0) ||
+      customer.onboardingStep === 'completed'
+    ) {
+      completedSteps.push('trusted_contacts');
+    }
     if (customer.isOnboardingComplete) completedSteps.push('completed');
 
-    let currentStep = 'legal_consent';
-    if (!completedSteps.includes('legal_consent')) currentStep = 'legal_consent';
-    else if (!completedSteps.includes('location')) currentStep = 'location';
-    else if (!completedSteps.includes('profile_setup')) currentStep = 'profile_setup';
-    else if (!completedSteps.includes('interests')) currentStep = 'interests';
-    else if (!completedSteps.includes('trusted_contacts')) currentStep = 'trusted_contacts';
-    else currentStep = 'completed';
+    let currentStep = customer.onboardingStep || 'legal_consent';
+    if (customer.isOnboardingComplete) {
+      currentStep = 'completed';
+    }
 
     return {
       isOnboardingComplete: customer.isOnboardingComplete,
-      currentStep: customer.isOnboardingComplete ? 'completed' : currentStep,
+      currentStep,
       completedSteps,
       customer: this.buildProfileResponse(customer),
     };
