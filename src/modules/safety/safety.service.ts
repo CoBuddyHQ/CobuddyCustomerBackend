@@ -99,6 +99,7 @@ export class SafetyService {
     data: {
       companionId?: string;
       bookingId?: string;
+      incidentType?: string;
       description: string;
       evidenceUrls?: string[];
     },
@@ -108,6 +109,7 @@ export class SafetyService {
         customerId,
         companionId: data.companionId,
         bookingId: data.bookingId,
+        incidentType: data.incidentType || 'other',
         description: data.description,
         evidenceUrls: data.evidenceUrls ?? [],
         status: 'submitted',

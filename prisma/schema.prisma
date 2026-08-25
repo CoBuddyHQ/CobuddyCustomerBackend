@@ -18,6 +18,8 @@ enum CustomerAccountStatus {
   deactivated
   suspended
   deleted
+  under_review
+  policy_violation
 }
 
 enum CustomerKycStatus {
@@ -185,6 +187,7 @@ model Customer {
   incidents       CustomerIncident[]
   supportTickets  CustomerSupportTicket[]
   reviews         CustomerReview[]
+  feedbacks       CustomerSessionFeedback[]
   razorpayOrders  CustomerRazorpayOrder[]
   blockedUsers    CustomerBlock[]          @relation("Blocker")
   blockedByUsers  CustomerBlock[]          @relation("Blocked")
@@ -264,6 +267,7 @@ model CustomerSetting {
   marketingNotifications Boolean  @default(false)
   appLockEnabled         Boolean  @default(false)
   locationSharingEnabled Boolean  @default(true)
+  isIncognito            Boolean  @default(false)
   createdAt              DateTime @default(now())
   updatedAt              DateTime @updatedAt
 
@@ -394,8 +398,9 @@ model CustomerSession {
   createdAt        DateTime              @default(now())
   updatedAt        DateTime              @updatedAt
 
-  booking  CustomerBooking @relation(fields: [bookingId], references: [id])
-  customer Customer        @relation(fields: [customerId], references: [id])
+  booking  CustomerBooking          @relation(fields: [bookingId], references: [id])
+  customer Customer                 @relation(fields: [customerId], references: [id])
+  feedback CustomerSessionFeedback?
 
   @@unique([bookingId, customerId])
   @@index([customerId])
@@ -544,6 +549,7 @@ model CustomerNotification {
   iconColor   String?
   route       String?
   stack       String?
+  routeParams Json?
   isRead      Boolean  @default(false)
   createdAt   DateTime @default(now())
 
@@ -577,6 +583,7 @@ model CustomerIncident {
   customerId   String
   companionId  String?
   bookingId    String?
+  incidentType String?
   description  String
   evidenceUrls String[]               @default([])
   status       CustomerIncidentStatus @default(submitted)
@@ -585,6 +592,25 @@ model CustomerIncident {
   customer Customer @relation(fields: [customerId], references: [id])
 
   @@map("customer_incidents")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SESSION FEEDBACK
+// ─────────────────────────────────────────────────────────────────────────────
+
+model CustomerSessionFeedback {
+  id         String   @id @default(uuid())
+  sessionId  String   @unique
+  customerId String
+  sentiment  String   // 'up' | 'down'
+  tags       String[] @default([])
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  session  CustomerSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  customer Customer        @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@map("customer_session_feedbacks")
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

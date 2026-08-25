@@ -537,6 +537,10 @@ export class DiscoveryService {
              c.hobbies.some(h => h.toLowerCase().includes(q))
       );
     }
+    const targetLang = (filter.language || filter.filterLanguage)?.toLowerCase().trim();
+    if (targetLang && targetLang !== 'all') {
+      result = result.filter(c => c.languages.some(l => l.toLowerCase().includes(targetLang)));
+    }
     if (filter.isOnline !== undefined) {
       result = result.filter(c => c.isOnline === filter.isOnline);
     }

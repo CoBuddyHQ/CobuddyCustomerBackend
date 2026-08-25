@@ -144,4 +144,74 @@ export class AccountService {
       submittedAt: new Date().toISOString(),
     };
   }
+
+  // ── CHANGE MOBILE NUMBER (2-STEP OTP VERIFICATION) ────────────────────────
+  async requestChangeMobileOtp(customerId: string, oldPhone: string, newPhone: string) {
+    const customer = await this.prisma.customer.findUnique({ where: { id: customerId } });
+    if (!customer) throw new NotFoundException('Customer not found');
+
+    if (customer.phone !== oldPhone) {
+      throw new NotFoundException('Old phone number does not match current registered account number');
+    }
+
+    const existingNew = await this.prisma.customer.findUnique({ where: { phone: newPhone } });
+    if (existingNew && existingNew.id !== customerId) {
+      throw new NotFoundException('New phone number is already registered to another account');
+    }
+
+    const isDev = process.env.NODE_ENV === 'development';
+    const oldOtp = isDev && process.env.OTP_DEV_BYPASS ? process.env.OTP_DEV_BYPASS : String(Math.floor(100000 + Math.random() * 900000));
+    const newOtp = isDev && process.env.OTP_DEV_BYPASS ? process.env.OTP_DEV_BYPASS : String(Math.floor(100000 + Math.random() * 900000));
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+
+    await this.prisma.customerOtp.deleteMany({ where: { phone: { in: [oldPhone, newPhone] } } });
+    await this.prisma.customerOtp.createMany({
+      data: [
+        { phone: oldPhone, otp: oldOtp, expiresAt },
+        { phone: newPhone, otp: newOtp, expiresAt },
+      ],
+    });
+
+    return {
+      success: true,
+      message: 'Verification OTPs sent to both old and new mobile numbers',
+      ...(isDev ? { devOldOtp: oldOtp, devNewOtp: newOtp } : {}),
+    };
+  }
+
+  async verifyChangeMobile(customerId: string, oldPhone: string, newPhone: string, oldOtp: string, newOtp: string) {
+    const customer = await this.prisma.customer.findUnique({ where: { id: customerId } });
+    if (!customer || customer.phone !== oldPhone) {
+      throw new NotFoundException('Current account number mismatch');
+    }
+
+    const isDev = process.env.NODE_ENV === 'development';
+    const bypass = isDev && Boolean(process.env.OTP_DEV_BYPASS);
+
+    if (!bypass) {
+      const oldRecord = await this.prisma.customerOtp.findFirst({ where: { phone: oldPhone, otp: oldOtp } });
+      const newRecord = await this.prisma.customerOtp.findFirst({ where: { phone: newPhone, otp: newOtp } });
+
+      if (!oldRecord || oldRecord.expiresAt < new Date()) {
+        throw new NotFoundException('Invalid or expired OTP for old phone number');
+      }
+      if (!newRecord || newRecord.expiresAt < new Date()) {
+        throw new NotFoundException('Invalid or expired OTP for new phone number');
+      }
+    }
+
+    // Update customer phone and clean up OTPs
+    await this.prisma.customer.update({
+      where: { id: customerId },
+      data: { phone: newPhone },
+    });
+
+    await this.prisma.customerOtp.deleteMany({ where: { phone: { in: [oldPhone, newPhone] } } });
+
+    return {
+      success: true,
+      message: 'Mobile number updated successfully',
+      newPhone,
+    };
+  }
 }

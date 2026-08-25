@@ -43,6 +43,16 @@ export class CompanionFilterDto {
   search?: string;
 
   @ApiPropertyOptional()
+  @IsString()
+  @IsOptional()
+  language?: string;
+
+  @ApiPropertyOptional()
+  @IsString()
+  @IsOptional()
+  filterLanguage?: string;
+
+  @ApiPropertyOptional()
   @IsNumber()
   @Min(1)
   @IsOptional()

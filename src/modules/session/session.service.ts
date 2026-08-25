@@ -145,19 +145,50 @@ export class SessionService {
   }
 
   async submitTip(customerId: string, sessionId: string, amount: number, paymentMethod = 'wallet') {
+    if (!amount || amount <= 0) {
+      throw new BadRequestException('Invalid tip amount');
+    }
+
     const session = await this.prisma.customerSession.findFirst({
       where: { id: sessionId, customerId },
+      include: { booking: true },
     });
     if (!session) throw new NotFoundException('Session not found');
 
     if (paymentMethod === 'wallet') {
       const wallet = await this.prisma.customerWallet.findUnique({ where: { customerId } });
-      if (wallet && wallet.balance >= amount) {
-        await this.prisma.customerWallet.update({
+      if (!wallet || wallet.balance < amount) {
+        throw new BadRequestException('Insufficient wallet balance to pay tip');
+      }
+
+      // Execute in atomic transaction
+      const [updatedSession] = await this.prisma.$transaction([
+        this.prisma.customerSession.update({
+          where: { id: sessionId },
+          data: { tipAmount: { increment: amount } },
+          include: { booking: true },
+        }),
+        this.prisma.customerWallet.update({
           where: { customerId },
           data: { balance: { decrement: amount } },
-        });
-      }
+        }),
+        this.prisma.customerTransaction.create({
+          data: {
+            customerId,
+            bookingId: session.bookingId,
+            type: 'tip',
+            amount,
+            description: `Tip for session with ${session.booking?.companionName || 'Companion'}`,
+            status: 'completed',
+          },
+        }),
+      ]);
+
+      return {
+        success: true,
+        message: `₹${amount} tip sent successfully`,
+        session: this.toSessionResponse(updatedSession),
+      };
     }
 
     const updated = await this.prisma.customerSession.update({
@@ -175,10 +206,24 @@ export class SessionService {
     });
     if (!session) throw new NotFoundException('Session not found');
 
+    const feedback = await this.prisma.customerSessionFeedback.upsert({
+      where: { sessionId },
+      create: {
+        sessionId,
+        customerId,
+        sentiment,
+        tags: tags || [],
+      },
+      update: {
+        sentiment,
+        tags: tags || [],
+      },
+    });
+
     return {
       success: true,
       message: 'Feedback submitted successfully',
-      feedback: { sessionId, sentiment, tags, submittedAt: new Date().toISOString() },
+      feedback,
     };
   }
 }

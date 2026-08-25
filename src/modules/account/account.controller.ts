@@ -94,4 +94,28 @@ export class AccountController {
   submitReactivationRequest(@Body() body: { phone?: string; email?: string; reason?: string }) {
     return this.accountService.submitReactivationRequest(body);
   }
+
+  @Post('change-mobile/request-otp')
+  @ApiOperation({ summary: 'Request OTPs for old and new mobile numbers' })
+  requestChangeMobileOtp(
+    @CurrentCustomer() customer: any,
+    @Body() body: { oldPhone: string; newPhone: string },
+  ) {
+    return this.accountService.requestChangeMobileOtp(customer.id, body.oldPhone, body.newPhone);
+  }
+
+  @Post('change-mobile/verify')
+  @ApiOperation({ summary: 'Verify both OTPs and commit mobile number update' })
+  verifyChangeMobile(
+    @CurrentCustomer() customer: any,
+    @Body() body: { oldPhone: string; newPhone: string; oldOtp: string; newOtp: string },
+  ) {
+    return this.accountService.verifyChangeMobile(
+      customer.id,
+      body.oldPhone,
+      body.newPhone,
+      body.oldOtp,
+      body.newOtp,
+    );
+  }
 }

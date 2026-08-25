@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 
 @Injectable()
@@ -166,11 +166,11 @@ export class WalletService {
     const wallet = await this.prisma.customerWallet.findUnique({ where: { customerId } });
     if (!wallet) throw new NotFoundException('Wallet not found');
 
-    if (data.amount < 100) {
-      throw new Error('Minimum withdrawal amount is ₹100');
+    if (data.amount < 1000) {
+      throw new BadRequestException('Minimum withdrawal amount is ₹1,000 (matching admin configuration)');
     }
     if (data.amount > wallet.balance) {
-      throw new Error('Insufficient wallet balance');
+      throw new BadRequestException('Insufficient wallet balance');
     }
 
     // Deduct from wallet and create transaction
