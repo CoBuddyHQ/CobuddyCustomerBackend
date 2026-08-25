@@ -68,6 +68,7 @@ services:
     volumes:
       - ./src:/app/src
       - ./prisma:/app/prisma
+      - ./prisma.config.ts:/app/prisma.config.ts
       - ./uploads:/app/uploads
       - /app/node_modules
     depends_on:

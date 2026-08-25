@@ -91,6 +91,7 @@ services:
       # Live reload: mount src so changes reflect without rebuild
       - ./src:/app/src
       - ./prisma:/app/prisma
+      - ./prisma.config.ts:/app/prisma.config.ts
       # Persist uploaded files
       - ./uploads:/app/uploads
       # Prevent host node_modules from overwriting container's
