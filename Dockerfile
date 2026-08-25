@@ -5,8 +5,8 @@
 # =========================================================
 FROM node:20-alpine
 
-# Install essential OS dependencies (for Prisma binary targets)
-RUN apk add --no-cache openssl libc6-compat
+# Install essential OS dependencies (for Prisma binary targets and line endings)
+RUN apk add --no-cache openssl libc6-compat dos2unix
 
 # Set working directory
 WORKDIR /app
@@ -30,9 +30,9 @@ COPY prisma.config.ts ./
 # Copy application source code
 COPY src ./src
 
-# Copy entrypoint script
+# Copy entrypoint script and ensure Linux LF line endings
 COPY docker-entrypoint.sh ./
-RUN chmod +x docker-entrypoint.sh
+RUN dos2unix docker-entrypoint.sh && chmod +x docker-entrypoint.sh
 
 # Expose backend port
 EXPOSE 4002
