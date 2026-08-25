@@ -3,7 +3,12 @@ import { ApiTags, ApiOperation } from '@nestjs/swagger';
 
 export const ADMIN_VALUES = {
   walletBalanceLimits: { nonKycMax: 10000 },
-  commission: { minimumWithdrawalAmount: 1000, serviceFee: 50 },
+  commission: {
+    minimumWithdrawalAmount: 1000,
+    serviceFee: 50,
+    platformFeePercentage: 15,
+    taxPercentage: 18,
+  },
   pricing: { cancellationFeePercentage: 10 },
   cancellationRefundTiers: {
     tier1: { minHours: 48, refundPercent: 100 },
