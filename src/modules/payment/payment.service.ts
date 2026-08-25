@@ -69,8 +69,9 @@ export class PaymentService {
     razorpay_payment_id: string;
     razorpay_signature: string;
   }) {
-    // Verify signature
     const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = body;
+
+    // 1. Verify HMAC SHA256 signature
     const expectedSignature = crypto
       .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET ?? '')
       .update(`${razorpay_order_id}|${razorpay_payment_id}`)
@@ -80,43 +81,54 @@ export class PaymentService {
       throw new BadRequestException('Payment verification failed: invalid signature');
     }
 
-    // Find order
+    // 2. Find order and verify ownership (IDOR check)
     const order = await this.prisma.customerRazorpayOrder.findUnique({
       where: { orderId: razorpay_order_id },
     });
     if (!order) throw new BadRequestException('Order not found');
+    if (order.customerId !== customerId) {
+      throw new BadRequestException('Unauthorized: order does not belong to this customer');
+    }
 
-    // Update order as paid
-    await this.prisma.customerRazorpayOrder.update({
-      where: { orderId: razorpay_order_id },
-      data: {
-        paymentId: razorpay_payment_id,
-        signature: razorpay_signature,
-        status: 'paid',
-      },
-    });
+    // 3. Idempotent check — prevent duplicate processing
+    if (order.status === 'paid') {
+      return {
+        message: 'Payment already verified',
+        paymentId: order.paymentId ?? razorpay_payment_id,
+      };
+    }
 
-    // Update booking payment status
-    if (order.bookingId) {
-      await this.prisma.customerBooking.update({
-        where: { id: order.bookingId },
-        data: { paymentStatus: 'completed', status: 'confirmed' },
-      });
-
-      // Deduct from wallet (escrow hold) and create transaction
-      await this.prisma.customerTransaction.create({
+    // 4. Atomic transaction updating Order + Booking + Transaction Ledger
+    await this.prisma.$transaction(async (tx) => {
+      await tx.customerRazorpayOrder.update({
+        where: { orderId: razorpay_order_id },
         data: {
-          customerId,
-          bookingId: order.bookingId,
-          type: 'session_payment',
-          amount: order.amount,
-          description: `Session payment`,
-          paymentSource: `Razorpay: ${razorpay_payment_id}`,
-          referenceId: razorpay_payment_id,
-          status: 'completed',
+          paymentId: razorpay_payment_id,
+          signature: razorpay_signature,
+          status: 'paid',
         },
       });
-    }
+
+      if (order.bookingId) {
+        await tx.customerBooking.update({
+          where: { id: order.bookingId },
+          data: { paymentStatus: 'completed', status: 'confirmed' },
+        });
+
+        await tx.customerTransaction.create({
+          data: {
+            customerId,
+            bookingId: order.bookingId,
+            type: 'session_payment',
+            amount: order.amount,
+            description: `Session payment`,
+            paymentSource: `Razorpay: ${razorpay_payment_id}`,
+            referenceId: razorpay_payment_id,
+            status: 'completed',
+          },
+        });
+      }
+    });
 
     return { message: 'Payment verified successfully', paymentId: razorpay_payment_id };
   }

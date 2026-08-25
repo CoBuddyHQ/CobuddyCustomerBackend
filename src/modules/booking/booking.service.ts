@@ -74,49 +74,68 @@ export class BookingService {
     const timeStr = dto.time || startDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const activityTitle = dto.activityName || dto.activity || 'Activity';
 
-    const booking = await this.prisma.customerBooking.create({
-      data: {
+    // Idempotency / Double-tap check — if duplicate pending/confirmed booking exists, return it
+    const existingDuplicate = await this.prisma.customerBooking.findFirst({
+      where: {
         customerId,
         companionId: dto.companionId,
-        companionName: dto.companionName,
-        activityId: actId,
-        activityName: activityTitle,
-        activityIcon: dto.activityIcon,
-        venueId: vId,
-        venueName: vName,
-        venueAddress: dto.venueAddress || `${vName}, ${vArea} ${vCity}`.trim(),
-        venueArea: vArea,
-        venueCity: vCity,
-        venueType: vType,
-        meetingPoint: vMeeting,
-        landmark: vLandmark,
-        isApproved: vApproved,
         date: startDate,
         time: timeStr,
-        durationHours,
-        specialInstructions: dto.specialInstructions,
-        baseRate,
-        durationMultiplier: multiplier,
-        baseTotal,
-        platformFee,
-        taxAmount,
-        totalAmount,
-        status: 'pending',
+        status: { in: ['pending', 'counter_proposed', 'accepted', 'confirmed'] },
       },
     });
 
-    // Create notification
-    await this.prisma.customerNotification.create({
-      data: {
-        customerId,
-        title: 'Booking Request Sent',
-        description: `Your request to ${dto.companionName || 'companion'} has been sent.`,
-        category: 'request',
-        icon: 'calendar-clock',
-        iconColor: '#D4AF37',
-        route: 'BookingDetailScreen',
-        stack: 'BookingsTab',
-      },
+    if (existingDuplicate) {
+      return this.buildBookingResponse(existingDuplicate);
+    }
+
+    const booking = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.customerBooking.create({
+        data: {
+          customerId,
+          companionId: dto.companionId,
+          companionName: dto.companionName,
+          activityId: actId,
+          activityName: activityTitle,
+          activityIcon: dto.activityIcon,
+          venueId: vId,
+          venueName: vName,
+          venueAddress: dto.venueAddress || `${vName}, ${vArea} ${vCity}`.trim(),
+          venueArea: vArea,
+          venueCity: vCity,
+          venueType: vType,
+          meetingPoint: vMeeting,
+          landmark: vLandmark,
+          isApproved: vApproved,
+          date: startDate,
+          time: timeStr,
+          durationHours,
+          specialInstructions: dto.specialInstructions,
+          baseRate,
+          durationMultiplier: multiplier,
+          baseTotal,
+          platformFee,
+          taxAmount,
+          totalAmount,
+          status: 'pending',
+        },
+      });
+
+      // Create notification
+      await tx.customerNotification.create({
+        data: {
+          customerId,
+          title: 'Booking Request Sent',
+          description: `Your request to ${dto.companionName || 'companion'} has been sent.`,
+          category: 'request',
+          icon: 'calendar-clock',
+          iconColor: '#D4AF37',
+          route: 'BookingDetailScreen',
+          stack: 'BookingsTab',
+        },
+      });
+
+      return created;
     });
 
     return this.buildBookingResponse(booking);
