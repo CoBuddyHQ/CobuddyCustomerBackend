@@ -12,7 +12,7 @@ const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({ adapter } as any);
 
 async function main() {
-  console.log('🌱 Seeding CoBuddy Customer Development Database...');
+  console.log('🌱 Seeding CoBuddy Customer Development Database (Canonical Aligned)...');
 
   // 1. Create / Upsert Demo Customer
   const demoPhone = '+919876543210';
@@ -22,7 +22,7 @@ async function main() {
       phone: demoPhone,
       countryCode: '+91',
       name: 'Rohan Verma',
-      bio: 'Tech enthusiast and coffee lover exploring new places.',
+      bio: 'Tech enthusiast and coffee lover exploring new places in the city.',
       age: 26,
       gender: 'Male',
       city: 'Mumbai',
@@ -30,30 +30,32 @@ async function main() {
       kycStatus: 'verified',
       accountStatus: 'active',
       isOnboardingComplete: true,
-      interests: ['Coffee & Conversation', 'Fine Dining & Food', 'City Guide & Walk'],
-      spokenLanguages: ['English', 'Hindi', 'Marathi'],
+      interests: ['INT-1', 'INT-3', 'INT-7'], // Canonical activity IDs
+      spokenLanguages: ['en', 'hi', 'mr'],      // Canonical language codes
     },
     update: {
       name: 'Rohan Verma',
       isOnboardingComplete: true,
       kycStatus: 'verified',
+      interests: ['INT-1', 'INT-3', 'INT-7'],
+      spokenLanguages: ['en', 'hi', 'mr'],
     },
   });
 
   console.log(`👤 Customer created/updated: ${customer.name} (${customer.id})`);
 
-  // 2. Initialize Customer Wallet (Balance: ₹4,500 matching WithdrawMoneyScreen)
+  // 2. Initialize Customer Wallet (within nonKycMax ₹10,000 limit)
   await prisma.customerWallet.upsert({
     where: { customerId: customer.id },
     create: {
       customerId: customer.id,
-      balance: 4500,
+      balance: 5000,
       pendingRefunds: 0,
       escrowHeld: 0,
       currency: 'INR',
     },
     update: {
-      balance: 4500,
+      balance: 5000,
     },
   });
 
@@ -98,7 +100,7 @@ async function main() {
     ],
   });
 
-  // 6. Payment Methods & Bank Account (Matching AddBankAccountScreen / WithdrawalMethodsScreen)
+  // 6. Payment Methods & Bank Account
   await prisma.customerPaymentMethod.deleteMany({ where: { customerId: customer.id } });
   await prisma.customerPaymentMethod.createMany({
     data: [
@@ -125,24 +127,37 @@ async function main() {
     ],
   });
 
-  // 7. Seed Sample Bookings & Sessions
+  // 7. Seed Sample Bookings & Sessions (Calculated with 15% platform fee + 18% GST)
+  // baseTotal = 500 * 2 = 1000
+  // platformFee = 1000 * 0.15 = 150
+  // taxAmount = 1000 * 0.18 = 180
+  // totalAmount = 1330
   const booking1 = await prisma.customerBooking.create({
     data: {
       customerId: customer.id,
       companionId: 'c1',
       companionName: 'Elena Vasquez',
-      activityName: 'Coffee & Conversation',
+      activityId: 'INT-3',
+      activityName: 'Cafe Hopping',
+      activityIcon: 'coffee',
       venueName: 'Blue Tokai Cafe, Bandra West',
       venueAddress: 'Plot 12, Pali Hill, Mumbai',
+      venueArea: 'Bandra West',
+      venueCity: 'Mumbai',
+      venueType: 'cafe',
+      meetingPoint: 'Main entrance outdoor seating',
+      landmark: 'Near Pali Hill Market',
+      isApproved: true,
       date: new Date(Date.now() + 86400000), // Tomorrow
       time: '04:00 PM',
       durationHours: 2,
-      status: 'confirmed',
+      status: 'accepted',
       baseRate: 500,
+      durationMultiplier: 1.0,
       baseTotal: 1000,
-      platformFee: 99,
+      platformFee: 150,
       taxAmount: 180,
-      totalAmount: 1279,
+      totalAmount: 1330,
       paymentStatus: 'completed',
     },
   });
@@ -153,7 +168,7 @@ async function main() {
       customerId: customer.id,
       companionId: 'c1',
       status: 'upcoming',
-      passCode: '482910',
+      passCode: '4829', // 4-digit code
     },
   });
 
@@ -164,8 +179,8 @@ async function main() {
         customerId: customer.id,
         bookingId: booking1.id,
         type: 'session_payment',
-        amount: 1279,
-        description: 'Payment for Coffee session with Elena Vasquez',
+        amount: 1330,
+        description: 'Payment for Cafe Hopping with Elena Vasquez',
         status: 'completed',
       },
       {
@@ -178,29 +193,31 @@ async function main() {
     ],
   });
 
-  // 9. Sample Notification
+  // 9. Sample Notification using Canonical 11-category taxonomy
   await prisma.customerNotification.createMany({
     data: [
       {
         customerId: customer.id,
         title: 'Booking Confirmed!',
         description: 'Elena Vasquez has accepted your booking request for tomorrow at 04:00 PM.',
-        category: 'Bookings',
+        category: 'request',
         icon: 'calendar-check',
         iconColor: '#10B981',
+        route: 'BookingDetailScreen',
       },
       {
         customerId: customer.id,
         title: 'KYC Verification Approved',
         description: 'Your Aadhaar document has been successfully verified.',
-        category: 'Security',
+        category: 'safety',
         icon: 'shield-check',
         iconColor: '#3B82F6',
+        route: 'KycStatusScreen',
       },
     ],
   });
 
-  console.log('✅ Seed data successfully inserted into PostgreSQL database!');
+  console.log('✅ Seed data successfully inserted with canonical alignment!');
 }
 
 main()

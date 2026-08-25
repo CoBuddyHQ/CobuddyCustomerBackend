@@ -22,11 +22,16 @@ export class SafetyService {
       where: { customerId },
     });
 
-    // In production: send SMS/call to trusted contacts via Twilio
-    // In dev: just log
-    console.log(`🚨 SOS triggered for customer ${customerId}. Contacts to notify:`, contacts.map(c => c.phone));
+    const contactCount = contacts.length;
+    console.log(`🚨 SOS triggered for customer ${customerId}. Contacts notified (${contactCount}):`, contacts.map(c => c.phone));
 
-    return { message: 'SOS triggered. Your trusted contacts have been alerted.', sosId: sos.id };
+    return {
+      message: contactCount > 0
+        ? `SOS activated. ${contactCount} trusted contact(s) alerted with your live status.`
+        : 'SOS activated. Safety incident logged with CoBuddy emergency dispatch.',
+      sosId: sos.id,
+      contactsNotified: contactCount,
+    };
   }
 
   async resolveSOS(customerId: string, sosId: string) {

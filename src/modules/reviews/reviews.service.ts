@@ -7,49 +7,35 @@ export class ReviewsService {
   constructor(private prisma: PrismaService) {}
 
   async createReview(customerId: string, dto: CreateReviewDto) {
-    let bookingId = dto.bookingId;
-    if (bookingId) {
-      const booking = await this.prisma.customerBooking.findFirst({
-        where: { id: bookingId, customerId },
-      });
-      if (booking && booking.status !== 'completed') {
-        await this.prisma.customerBooking.update({
-          where: { id: booking.id },
-          data: { status: 'completed' },
-        });
-      }
-    } else {
-      const existing = await this.prisma.customerBooking.findFirst({
-        where: { customerId, companionId: dto.companionId },
-        orderBy: { createdAt: 'desc' },
-      });
-      bookingId = existing?.id;
+    if (!dto.bookingId) {
+      throw new BadRequestException('A valid bookingId is required to submit a review');
     }
 
-    if (!bookingId) {
-      const autoBooking = await this.prisma.customerBooking.create({
-        data: {
-          customerId,
-          companionId: dto.companionId,
-          activityName: 'Session Review',
-          venueName: 'Public Venue',
-          date: new Date(),
-          time: '18:00',
-          durationHours: 2,
-          baseRate: 500,
-          baseTotal: 1000,
-          totalAmount: 1000,
-          status: 'completed',
-        },
-      });
-      bookingId = autoBooking.id;
+    const booking = await this.prisma.customerBooking.findFirst({
+      where: { id: dto.bookingId, customerId },
+    });
+
+    if (!booking) {
+      throw new NotFoundException('Booking not found or does not belong to this customer');
+    }
+
+    if (booking.status !== 'completed') {
+      throw new BadRequestException(`Cannot review a booking with status '${booking.status}'. Only completed sessions can be reviewed.`);
+    }
+
+    // Check if review already exists for this booking
+    const existingReview = await this.prisma.customerReview.findFirst({
+      where: { bookingId: dto.bookingId, customerId },
+    });
+    if (existingReview) {
+      throw new BadRequestException('A review has already been submitted for this booking');
     }
 
     const review = await this.prisma.customerReview.create({
       data: {
         customerId,
-        companionId: dto.companionId,
-        bookingId,
+        companionId: booking.companionId || dto.companionId,
+        bookingId: dto.bookingId,
         rating: dto.rating,
         comment: dto.comment || dto.text,
         punctuality: dto.punctuality,

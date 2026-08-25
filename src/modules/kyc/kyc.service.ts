@@ -28,8 +28,15 @@ export class KycService {
   ) {
     const rawType = (dto.docType || dto.documentType || 'AADHAAR').toUpperCase();
     const docType = rawType === 'DRIVING_LICENSE' ? 'DL' : rawType;
-    const docNumber = dto.docNumber || dto.documentNumber || '1234567890';
-    const legalName = dto.legalName || 'Verified User';
+    const docNumber = dto.docNumber || dto.documentNumber;
+    const legalName = dto.legalName;
+
+    if (!docNumber || !docNumber.trim()) {
+      throw new BadRequestException('Document number is required for KYC submission');
+    }
+    if (!legalName || !legalName.trim()) {
+      throw new BadRequestException('Legal name as per document is required for KYC submission');
+    }
 
     // Upsert KYC record
     const kyc = await this.prisma.customerKyc.upsert({
@@ -37,8 +44,8 @@ export class KycService {
       create: {
         customerId,
         docType: docType as any,
-        docNumber,
-        legalName,
+        docNumber: docNumber.trim(),
+        legalName: legalName.trim(),
         frontDocUrl: frontDocUrl ?? null,
         backDocUrl: backDocUrl ?? null,
         status: 'pending',

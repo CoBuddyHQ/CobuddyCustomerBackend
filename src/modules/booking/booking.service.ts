@@ -14,8 +14,8 @@ import {
   CounterOfferResponseDto,
 } from './dto/booking.dto';
 
-const PLATFORM_FEE_PERCENT = 0.05; // 5%
-const TAX_PERCENT = 0.018; // 1.8% GST approximation
+const PLATFORM_FEE_PERCENT = 0.15; // 15% matching adminValues.commission.platformFeePercentage
+const TAX_PERCENT = 0.18; // 18% GST matching adminValues.commission.taxPercentage
 
 // Authoritative Activity Multipliers
 const ACTIVITY_MULTIPLIERS: Record<string, number> = {
@@ -340,6 +340,7 @@ export class BookingService {
       sessionStatus: activeSession?.status || (booking.status === 'accepted' ? 'upcoming' : undefined),
       status: booking.status,
       sessionPassCode: activeSession?.passCode ?? null,
+      matchScore: booking.matchScore ?? 95,
       safetyTimerActive: false,
       earningsBreakdown: {
         base: booking.baseTotal,

@@ -22,8 +22,9 @@ export class AuthService {
     const { phone } = dto;
 
     // Generate 6-digit OTP
-    const otp = process.env.NODE_ENV === 'development'
-      ? (process.env.OTP_DEV_BYPASS ?? '123456')
+    const isDevelopment = process.env.NODE_ENV === 'development';
+    const otp = isDevelopment && process.env.OTP_DEV_BYPASS
+      ? process.env.OTP_DEV_BYPASS
       : String(Math.floor(100000 + Math.random() * 900000));
 
     const expiresAt = new Date(
@@ -38,13 +39,15 @@ export class AuthService {
       data: { phone, otp, expiresAt },
     });
 
-    this.logger.log(`OTP for ${phone}: ${otp} (dev mode)`);
+    if (isDevelopment) {
+      this.logger.log(`OTP for ${phone}: ${otp} (dev mode)`);
+    }
 
     // In production: send via SMS provider
-    // For development: return in response (remove in production!)
+    // For development: return in response
     return {
       message: 'OTP sent successfully',
-      ...(process.env.NODE_ENV === 'development' ? { devOtp: otp } : {}),
+      ...(isDevelopment && process.env.OTP_DEV_BYPASS ? { devOtp: otp } : {}),
     };
   }
 
@@ -53,8 +56,9 @@ export class AuthService {
     const { phone, otp } = dto;
 
     const isDevBypass =
-      (process.env.NODE_ENV === 'development' || !process.env.NODE_ENV) &&
-      otp === (process.env.OTP_DEV_BYPASS ?? '123456');
+      process.env.NODE_ENV === 'development' &&
+      Boolean(process.env.OTP_DEV_BYPASS) &&
+      otp === process.env.OTP_DEV_BYPASS;
 
     if (!isDevBypass) {
       const otpRecord = await this.prisma.customerOtp.findFirst({

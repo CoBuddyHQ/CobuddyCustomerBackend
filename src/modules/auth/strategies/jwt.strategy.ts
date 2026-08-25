@@ -9,7 +9,7 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'customer-jwt') {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
-      secretOrKey: process.env.JWT_SECRET ?? 'fallback-secret',
+      secretOrKey: process.env.JWT_SECRET || 'dev-secret-key-only',
     });
   }
 
@@ -17,8 +17,14 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'customer-jwt') {
     const customer = await this.prisma.customer.findUnique({
       where: { id: payload.sub },
     });
-    if (!customer || customer.accountStatus === 'deleted') {
-      throw new UnauthorizedException('Customer not found or deleted');
+    if (!customer) {
+      throw new UnauthorizedException('Customer not found');
+    }
+    if (customer.accountStatus === 'deleted') {
+      throw new UnauthorizedException('Customer account has been deleted');
+    }
+    if (customer.accountStatus === 'deactivated' || customer.accountStatus === 'suspended') {
+      throw new UnauthorizedException(`Customer account is ${customer.accountStatus}`);
     }
     return customer;
   }

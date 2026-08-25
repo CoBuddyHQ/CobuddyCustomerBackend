@@ -8,9 +8,17 @@ import { JwtStrategy } from './strategies/jwt.strategy';
 @Module({
   imports: [
     PassportModule.register({ defaultStrategy: 'customer-jwt' }),
-    JwtModule.register({
-      secret: process.env.JWT_SECRET ?? 'fallback-secret',
-      signOptions: { expiresIn: '15m' },
+    JwtModule.registerAsync({
+      useFactory: () => {
+        const secret = process.env.JWT_SECRET;
+        if (!secret && process.env.NODE_ENV === 'production') {
+          throw new Error('FATAL: JWT_SECRET environment variable is not defined!');
+        }
+        return {
+          secret: secret || 'dev-secret-key-only',
+          signOptions: { expiresIn: (process.env.JWT_EXPIRES_IN ?? '15m') as any },
+        };
+      },
     }),
   ],
   controllers: [AuthController],

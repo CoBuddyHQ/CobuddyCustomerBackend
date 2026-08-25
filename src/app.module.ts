@@ -31,8 +31,8 @@ import { AppController } from './app.controller';
     ThrottlerModule.forRoot([{ ttl: 60000, limit: 100 }]),
     ScheduleModule.forRoot(),
     ServeStaticModule.forRoot({
-      rootPath: join(process.cwd(), 'uploads'),
-      serveRoot: '/uploads',
+      rootPath: join(process.cwd(), 'uploads', 'public'),
+      serveRoot: '/uploads/public',
     }),
     PrismaModule,
     AuthModule,

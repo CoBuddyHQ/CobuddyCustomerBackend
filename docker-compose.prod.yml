@@ -1,0 +1,93 @@
+# =============================================================
+# CoBuddy Customer Backend — Docker Compose (Production)
+# Usage:
+#   docker compose -f docker-compose.prod.yml up -d --build
+#
+# NOTE: All secrets must be provided via environment or .env.prod.
+# Container will fail to start if required production secrets are missing.
+# =============================================================
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: cobuddy_customer_postgres_prod
+    restart: always
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB is required}
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+    volumes:
+      - cobuddy_customer_postgres_data_prod:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - cobuddy_customer_network_prod
+
+  redis:
+    image: redis:7-alpine
+    container_name: cobuddy_customer_redis_prod
+    restart: always
+    volumes:
+      - cobuddy_customer_redis_data_prod:/data
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - cobuddy_customer_network_prod
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cobuddy_customer_backend_prod
+    restart: always
+    environment:
+      NODE_ENV: production
+      PORT: 4002
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?JWT_REFRESH_SECRET is required}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-15m}
+      JWT_REFRESH_EXPIRES_IN: ${JWT_REFRESH_EXPIRES_IN:-30d}
+      RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID:?RAZORPAY_KEY_ID is required}
+      RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET:?RAZORPAY_KEY_SECRET is required}
+      RAZORPAY_WEBHOOK_SECRET: ${RAZORPAY_WEBHOOK_SECRET:?RAZORPAY_WEBHOOK_SECRET is required}
+      CORS_ORIGIN: ${CORS_ORIGIN:?CORS_ORIGIN is required}
+    ports:
+      - "4002:4002"
+    volumes:
+      # Persistent file uploads only
+      - ./uploads:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:4002/health', (r) => { process.exit(r.statusCode === 200 ? 0 : 1); });\""]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    networks:
+      - cobuddy_customer_network_prod
+
+volumes:
+  cobuddy_customer_postgres_data_prod:
+    driver: local
+  cobuddy_customer_redis_data_prod:
+    driver: local
+
+networks:
+  cobuddy_customer_network_prod:
+    driver: bridge
+    name: cobuddy_customer_network_prod

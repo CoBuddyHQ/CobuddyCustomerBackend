@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { randomInt } from 'crypto';
 
 @Injectable()
 export class SessionService {
@@ -45,6 +46,9 @@ export class SessionService {
     });
     if (!booking) throw new NotFoundException('No accepted booking found for check-in');
 
+    // Generate cryptographically secure 4-digit pass code matching frontend contract
+    const securePassCode = passCode ?? String(randomInt(1000, 10000));
+
     const session = await this.prisma.customerSession.upsert({
       where: { bookingId_customerId: { bookingId, customerId } as any },
       create: {
@@ -53,7 +57,7 @@ export class SessionService {
         companionId: booking.companionId,
         status: 'checked_in',
         checkInTime: new Date(),
-        passCode: passCode ?? String(Math.floor(100000 + Math.random() * 900000)),
+        passCode: securePassCode,
       },
       update: {
         status: 'checked_in',
