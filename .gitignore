@@ -37,3 +37,9 @@ logs
 *.njsproj
 *.sln
 *.sw?
+
+# Database Backups
+backups/
+*.sql
+*.sql.gz
+
