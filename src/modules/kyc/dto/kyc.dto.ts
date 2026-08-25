@@ -26,4 +26,24 @@ export class SubmitKycDocumentDto {
   @IsString()
   @IsOptional()
   legalName?: string;
+
+  @ApiPropertyOptional()
+  @IsString()
+  @IsOptional()
+  frontDocUrl?: string;
+
+  @ApiPropertyOptional()
+  @IsString()
+  @IsOptional()
+  frontDocUri?: string;
+
+  @ApiPropertyOptional()
+  @IsString()
+  @IsOptional()
+  backDocUrl?: string;
+
+  @ApiPropertyOptional()
+  @IsString()
+  @IsOptional()
+  backDocUri?: string;
 }

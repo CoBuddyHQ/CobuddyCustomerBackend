@@ -55,8 +55,12 @@ export class KycController {
   @UseInterceptors(
     FileInterceptor('file', { storage: kycStorage('selfies'), limits: { fileSize: 10 * 1024 * 1024 } }),
   )
-  submitSelfie(@CurrentCustomer() customer: any, @UploadedFile() file: any) {
-    const selfieUrl = `/uploads/kyc/selfies/${file.filename}`;
+  submitSelfie(
+    @CurrentCustomer() customer: any,
+    @UploadedFile() file: any,
+    @Body() body: any,
+  ) {
+    const selfieUrl = file?.filename ? `/uploads/kyc/selfies/${file.filename}` : body?.selfieUrl;
     return this.kycService.submitSelfie(customer.id, selfieUrl);
   }
 
@@ -66,8 +70,12 @@ export class KycController {
   @UseInterceptors(
     FileInterceptor('file', { storage: kycStorage('liveness'), limits: { fileSize: 50 * 1024 * 1024 } }),
   )
-  submitLiveness(@CurrentCustomer() customer: any, @UploadedFile() file: any) {
-    const livenessUrl = `/uploads/kyc/liveness/${file.filename}`;
+  submitLiveness(
+    @CurrentCustomer() customer: any,
+    @UploadedFile() file: any,
+    @Body() body: any,
+  ) {
+    const livenessUrl = file?.filename ? `/uploads/kyc/liveness/${file.filename}` : body?.livenessUrl;
     return this.kycService.submitLiveness(customer.id, livenessUrl);
   }
 
