@@ -43,8 +43,12 @@ export class LoggingInterceptor implements NestInterceptor {
         const statusCode = res.statusCode || 200;
         let respStr = '';
         if (data) {
-          const raw = JSON.stringify(data);
-          respStr = ` | Res: ${raw.length > 300 ? raw.substring(0, 300) + '...[truncated]' : raw}`;
+          try {
+            const raw = typeof data === 'string' ? data : JSON.stringify(data);
+            respStr = ` | Res: ${raw.length > 300 ? raw.substring(0, 300) + '...[truncated]' : raw}`;
+          } catch {
+            respStr = ' | Res: [Unserializable Payload]';
+          }
         }
         this.logger.log(`⬅️  [RES] ${method} ${url} ${statusCode} — ${duration}ms${respStr}`);
       }),
