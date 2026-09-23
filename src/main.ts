@@ -4,6 +4,7 @@ import { ValidationPipe, RequestMethod } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { ResponseInterceptor } from './common/interceptors/response.interceptor';
+import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const compression = require('compression');
 import helmet from 'helmet';
@@ -42,7 +43,8 @@ async function bootstrap() {
 
   // Global exception filter & response wrapper
   app.useGlobalFilters(new HttpExceptionFilter());
-  app.useGlobalInterceptors(new ResponseInterceptor());
+  app.useGlobalInterceptors(new LoggingInterceptor(), new ResponseInterceptor());
+
 
   // Swagger OpenAPI Documentation
   const config = new DocumentBuilder()
