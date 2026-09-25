@@ -55,7 +55,7 @@ export class KycController {
 
   @Post('selfie')
   @ApiOperation({ summary: 'Upload selfie for KYC' })
-  @ApiConsumes('multipart/form-data')
+  @ApiConsumes('multipart/form-data', 'application/json')
   @UseInterceptors(
     FileInterceptor('file', { storage: kycStorage('selfies'), limits: { fileSize: 10 * 1024 * 1024 } }),
   )
@@ -70,7 +70,7 @@ export class KycController {
 
   @Post('liveness')
   @ApiOperation({ summary: 'Submit liveness check video/image' })
-  @ApiConsumes('multipart/form-data')
+  @ApiConsumes('multipart/form-data', 'application/json')
   @UseInterceptors(
     FileInterceptor('file', { storage: kycStorage('liveness'), limits: { fileSize: 50 * 1024 * 1024 } }),
   )
