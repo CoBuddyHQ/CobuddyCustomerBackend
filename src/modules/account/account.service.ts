@@ -87,13 +87,19 @@ export class AccountService {
   async getNotificationPreferences(customerId: string) {
     const setting = await this.getSettings(customerId);
     return {
-      bookingPush: setting.bookingNotifications,
-      bookingReminders: setting.bookingNotifications,
-      bookingEmail: setting.bookingNotifications,
-      chatPush: setting.chatNotifications,
-      walletAlerts: setting.bookingNotifications,
-      reviewPush: setting.bookingNotifications,
-      promoPush: setting.marketingNotifications,
+      bookings: setting.bookingNotifications ?? true,
+      messages: setting.chatNotifications ?? true,
+      promotions: setting.marketingNotifications ?? false,
+      safety: setting.safetyNotifications ?? true,
+      system: true,
+      // Detailed toggles
+      bookingPush: setting.bookingNotifications ?? true,
+      bookingReminders: setting.bookingNotifications ?? true,
+      bookingEmail: setting.bookingNotifications ?? true,
+      chatPush: setting.chatNotifications ?? true,
+      walletAlerts: setting.bookingNotifications ?? true,
+      reviewPush: setting.bookingNotifications ?? true,
+      promoPush: setting.marketingNotifications ?? false,
       sosAlerts: true,
     };
   }
@@ -102,9 +108,10 @@ export class AccountService {
     return this.prisma.customerSetting.update({
       where: { customerId },
       data: {
-        bookingNotifications: prefs.bookingPush ?? prefs.bookingReminders ?? true,
-        chatNotifications: prefs.chatPush ?? true,
-        marketingNotifications: prefs.promoPush ?? false,
+        bookingNotifications: prefs.bookings ?? prefs.bookingPush ?? prefs.bookingReminders ?? true,
+        chatNotifications: prefs.messages ?? prefs.chatPush ?? true,
+        marketingNotifications: prefs.promotions ?? prefs.promoPush ?? false,
+        safetyNotifications: prefs.safety ?? true,
       },
     });
   }
