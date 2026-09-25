@@ -366,7 +366,7 @@ model CustomerBooking {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
-  customer     Customer                @relation(fields: [customerId], references: [id])
+  customer     Customer                @relation(fields: [customerId], references: [id], onDelete: Cascade)
   sessions     CustomerSession[]
   payments     CustomerRazorpayOrder[]
   transactions CustomerTransaction[]
@@ -398,8 +398,8 @@ model CustomerSession {
   createdAt        DateTime              @default(now())
   updatedAt        DateTime              @updatedAt
 
-  booking  CustomerBooking          @relation(fields: [bookingId], references: [id])
-  customer Customer                 @relation(fields: [customerId], references: [id])
+  booking  CustomerBooking          @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  customer Customer                 @relation(fields: [customerId], references: [id], onDelete: Cascade)
   feedback CustomerSessionFeedback?
 
   @@unique([bookingId, customerId])
@@ -443,8 +443,8 @@ model CustomerTransaction {
   status        CustomerTransactionStatus @default(completed)
   createdAt     DateTime                  @default(now())
 
-  customer Customer         @relation(fields: [customerId], references: [id])
-  booking  CustomerBooking? @relation(fields: [bookingId], references: [id])
+  customer Customer         @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  booking  CustomerBooking? @relation(fields: [bookingId], references: [id], onDelete: Cascade)
 
   @@index([customerId])
   @@map("customer_transactions")
@@ -491,8 +491,8 @@ model CustomerRazorpayOrder {
   createdAt   DateTime            @default(now())
   updatedAt   DateTime            @updatedAt
 
-  customer Customer         @relation(fields: [customerId], references: [id])
-  booking  CustomerBooking? @relation(fields: [bookingId], references: [id])
+  customer Customer         @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  booking  CustomerBooking? @relation(fields: [bookingId], references: [id], onDelete: Cascade)
 
   @@map("customer_razorpay_orders")
 }
@@ -573,7 +573,7 @@ model CustomerSOS {
   resolvedAt DateTime?
   createdAt  DateTime          @default(now())
 
-  customer Customer @relation(fields: [customerId], references: [id])
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
 
   @@map("customer_sos")
 }
@@ -589,7 +589,7 @@ model CustomerIncident {
   status       CustomerIncidentStatus @default(submitted)
   createdAt    DateTime               @default(now())
 
-  customer Customer @relation(fields: [customerId], references: [id])
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
 
   @@map("customer_incidents")
 }
@@ -627,7 +627,7 @@ model CustomerSupportTicket {
   createdAt  DateTime                    @default(now())
   updatedAt  DateTime                    @updatedAt
 
-  customer Customer                 @relation(fields: [customerId], references: [id])
+  customer Customer                 @relation(fields: [customerId], references: [id], onDelete: Cascade)
   messages CustomerSupportMessage[]
 
   @@map("customer_support_tickets")
@@ -664,8 +664,8 @@ model CustomerReview {
   isPublic      Boolean  @default(true)
   createdAt     DateTime @default(now())
 
-  customer Customer        @relation(fields: [customerId], references: [id])
-  booking  CustomerBooking @relation(fields: [bookingId], references: [id])
+  customer Customer        @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  booking  CustomerBooking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
 
   @@unique([customerId, bookingId])
   @@map("customer_reviews")
@@ -685,7 +685,7 @@ model CustomerDispute {
   resolution  String?
   createdAt   DateTime @default(now())
 
-  booking CustomerBooking @relation(fields: [bookingId], references: [id])
+  booking CustomerBooking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
 
   @@map("customer_disputes")
 }
@@ -700,8 +700,8 @@ model CustomerBlock {
   blockedId String // companionId being blocked
   createdAt DateTime @default(now())
 
-  blocker Customer @relation("Blocker", fields: [blockerId], references: [id])
-  blocked Customer @relation("Blocked", fields: [blockedId], references: [id])
+  blocker Customer @relation("Blocker", fields: [blockerId], references: [id], onDelete: Cascade)
+  blocked Customer @relation("Blocked", fields: [blockedId], references: [id], onDelete: Cascade)
 
   @@unique([blockerId, blockedId])
   @@map("customer_blocks")

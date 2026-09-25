@@ -1,6 +1,7 @@
 import { Controller, Get, Post, Delete, Param, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { OptionalJwtAuthGuard } from '../auth/guards/optional-jwt-auth.guard';
 import { CurrentCustomer } from '../../common/decorators/current-customer.decorator';
 import { DiscoveryService } from './discovery.service';
 import { CompanionFilterDto } from './dto/discovery.dto';
@@ -9,6 +10,14 @@ import { CompanionFilterDto } from './dto/discovery.dto';
 @Controller('discovery')
 export class DiscoveryController {
   constructor(private readonly discoveryService: DiscoveryService) {}
+
+  @Get('home')
+  @UseGuards(OptionalJwtAuthGuard)
+  @ApiBearerAuth('customer-jwt')
+  @ApiOperation({ summary: 'Get Customer Home dashboard aggregated data' })
+  getHomeData(@CurrentCustomer() customer: any) {
+    return this.discoveryService.getHomeData(customer?.id);
+  }
 
   @Get('companions')
   @ApiOperation({ summary: 'List and filter companion profiles' })

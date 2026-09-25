@@ -138,6 +138,10 @@ export class BookingService {
       return created;
     });
 
+    this.logger.log(
+      `[BOOKING REQUEST CREATED] Booking ID: ${booking.id} | Customer: ${customerId} | Companion: ${dto.companionName || dto.companionId} | Activity: ${activityTitle} | Venue: ${vName} | Date: ${startDate.toISOString().split('T')[0]} ${timeStr} | Duration: ${durationHours}h | BaseRate: ₹${baseRate}/hr | PlatformFee: ₹${platformFee} | Tax: ₹${taxAmount} | TotalAmount: ₹${totalAmount}`
+    );
+
     return this.buildBookingResponse(booking);
   }
 

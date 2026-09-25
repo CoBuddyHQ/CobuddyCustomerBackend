@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CompanionFilterDto } from './dto/discovery.dto';
 
@@ -6,6 +6,8 @@ export { CompanionFilterDto };
 
 @Injectable()
 export class DiscoveryService {
+  private readonly logger = new Logger(DiscoveryService.name);
+
   constructor(private prisma: PrismaService) {}
 
   // Fallback rich companion dataset for discovery, featured, and profile view
@@ -637,4 +639,82 @@ export class DiscoveryService {
       { id: 'a4', titleKey: 'activity.a4.title', defaultTitle: 'Gaming Session', icon: 'controller-classic-outline', price: '₹600/hr', descKey: 'activity.a4.desc', defaultDesc: 'Arcade, bowling, or console gaming.' },
     ];
   }
+
+  async getHomeData(customerId?: string) {
+    const startTime = Date.now();
+    let unreadNotificationCount = 0;
+    let upcomingBookingCount = 0;
+    let activeBooking = null;
+    let customerProfile = null;
+
+    if (customerId) {
+      const [unreadCountRes, upcomingCountRes, profileRes, activeBookingRes] = await Promise.all([
+        this.prisma.customerNotification.count({
+          where: { customerId, isRead: false },
+        }).catch(() => 0),
+
+        this.prisma.customerBooking.count({
+          where: {
+            customerId,
+            status: { in: ['pending', 'accepted', 'confirmed', 'in_progress'] },
+          },
+        }).catch(() => 0),
+
+        this.prisma.customer.findUnique({
+          where: { id: customerId },
+          select: {
+            id: true,
+            name: true,
+            photoUrl: true,
+            city: true,
+            gender: true,
+            interests: true,
+          },
+        }).catch(() => null),
+
+        this.prisma.customerBooking.findFirst({
+          where: {
+            customerId,
+            status: { in: ['accepted', 'confirmed', 'in_progress'] },
+          },
+          orderBy: { date: 'asc' },
+        }).catch(() => null),
+      ]);
+
+      unreadNotificationCount = unreadCountRes;
+      upcomingBookingCount = upcomingCountRes;
+      customerProfile = profileRes;
+      activeBooking = activeBookingRes;
+    }
+
+    const categories = [
+      { id: 'coffee', title: 'Coffee Meetups', icon: 'coffee', color: '#D4AF37' },
+      { id: 'movie', title: 'Movie Buffs', icon: 'movie', color: '#E11D48' },
+      { id: 'city', title: 'City Walk', icon: 'map-marker', color: '#10B981' },
+      { id: 'study', title: 'Study Buddy', icon: 'book', color: '#3B82F6' },
+      { id: 'shopping', title: 'Shopping & Lifestyle', icon: 'shopping', color: '#8B5CF6' },
+    ];
+
+    const featuredCompanions = await this.getFeaturedCompanions();
+
+    const durationMs = Date.now() - startTime;
+    this.logger.log(
+      `[Customer Home API] GET /api/v1/discovery/home | customerId: ${customerId || 'guest'} | categories: ${categories.length} | featuredCompanions: ${featuredCompanions.length} | unreadNotifs: ${unreadNotificationCount} | upcomingBookings: ${upcomingBookingCount} | duration: ${durationMs}ms`
+    );
+
+    return {
+      success: true,
+      data: {
+        profile: customerProfile,
+        categories,
+        featuredCompanions,
+        quickAccess: {
+          notificationCount: unreadNotificationCount,
+          bookingCount: upcomingBookingCount,
+        },
+        activeBooking,
+      },
+    };
+  }
 }
+
