@@ -40,4 +40,11 @@ export class PaymentController {
   verifyWalletTopup(@CurrentCustomer() customer: any, @Body() body: any) {
     return this.paymentService.verifyWalletTopup(customer.id, body);
   }
+
+  @Post('webhook')
+  @ApiOperation({ summary: 'Razorpay webhook handler for async payment events' })
+  handleWebhook(@Body() body: any) {
+    // In production, signature comes from headers: req.headers['x-razorpay-signature']
+    return this.paymentService.handleWebhook(body?.signature ?? '', body);
+  }
 }

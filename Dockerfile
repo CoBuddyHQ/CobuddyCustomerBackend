@@ -1,41 +1,53 @@
-# =========================================================
-# CoBuddy Customer Backend — Development Dockerfile
-# Node version is PINNED to avoid version mismatch issues
-# across different machines/laptops.
-# =========================================================
-FROM node:20-alpine
+# =============================================================
+# CoBuddy Customer Backend — Multi-Stage Dockerfile
+# Stage 1 (builder): compile TypeScript, generate Prisma client
+# Stage 2 (runner):  lean production image, no devDependencies
+# =============================================================
 
-# Install essential OS dependencies (for Prisma binary targets and line endings)
-RUN apk add --no-cache openssl libc6-compat dos2unix
+# ── STAGE 1: BUILD ────────────────────────────────────────────
+FROM node:20-alpine AS builder
 
-# Set working directory
+RUN apk add --no-cache openssl libc6-compat
+
 WORKDIR /app
 
-# Copy dependency lockfiles FIRST (Docker layer cache optimization)
+# Install ALL deps (including dev) for build
 COPY package.json package-lock.json ./
-
-# npm ci uses package-lock.json exactly — guarantees same versions everywhere
 RUN npm ci
 
-# Copy Prisma schema (needed for prisma generate at runtime)
+# Copy source & config
 COPY prisma ./prisma/
-
-# Copy NestJS config files
 COPY tsconfig*.json ./
 COPY nest-cli.json ./
+COPY prisma.config.ts ./
+COPY src ./src/
 
-# Copy prisma config if exists
+# Generate Prisma client + compile TypeScript
+ENV DATABASE_URL="postgresql://dummy:dummy@localhost:5432/dummy"
+RUN npx prisma generate
+RUN npm run build
+
+# ── STAGE 2: RUNNER ───────────────────────────────────────────
+FROM node:20-alpine AS runner
+
+RUN apk add --no-cache openssl libc6-compat dos2unix
+
+WORKDIR /app
+
+# Production-only dependencies
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev
+
+# Copy compiled output, Prisma schema and generated client from builder
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
+COPY prisma ./prisma/
 COPY prisma.config.ts ./
 
-# Copy application source code
-COPY src ./src
-
-# Copy entrypoint script and ensure Linux LF line endings
+# Entrypoint script
 COPY docker-entrypoint.sh ./
 RUN dos2unix docker-entrypoint.sh && chmod +x docker-entrypoint.sh
 
-# Expose backend port
 EXPOSE 4002
 
-# Use entrypoint: generates Prisma client, runs migrations, starts dev server
 CMD ["sh", "docker-entrypoint.sh"]

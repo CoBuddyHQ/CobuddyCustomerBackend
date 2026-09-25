@@ -21,23 +21,25 @@ echo ""
 echo "[3/4] Running database sync / migrations..."
 if [ "$NODE_ENV" = "production" ]; then
   echo "      Applying Prisma migrations (production)..."
-  npx prisma migrate deploy || npx prisma db push --accept-data-loss
+  # SAFE: migrate deploy only — NEVER use db push --accept-data-loss in production
+  npx prisma migrate deploy
+  if [ $? -ne 0 ]; then
+    echo "ERROR: Prisma migrate deploy failed. Container will not start to protect data integrity."
+    exit 1
+  fi
   echo ""
   echo "[4/4] Starting NestJS in Production mode..."
   echo "      Port: 4002"
   echo "      Health: http://localhost:4002/health"
   echo ""
-  if [ ! -d "dist" ]; then
-    npm run build
-  fi
-  exec npm run start:prod
+  exec node dist/main
 else
   echo "      Syncing schema with prisma db push (development)..."
   npx prisma db push --accept-data-loss
   echo ""
-  echo "[4/4] Starting NestJS in Development watch mode..."
+  echo "[4/4] Starting NestJS application..."
   echo "      Port: 4002"
   echo "      Health: http://localhost:4002/health"
   echo ""
-  exec npm run start:dev
+  exec node dist/main
 fi

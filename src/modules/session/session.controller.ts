@@ -27,9 +27,9 @@ export class SessionController {
   @ApiOperation({ summary: 'Check in to session using booking ID' })
   checkIn(
     @CurrentCustomer() customer: any,
-    @Body() body: { bookingId: string; passCode?: string },
+    @Body() body: { bookingId: string },
   ) {
-    return this.sessionService.checkIn(customer.id, body.bookingId, body.passCode);
+    return this.sessionService.checkIn(customer.id, body.bookingId);
   }
 
   @Get(':id/pass')

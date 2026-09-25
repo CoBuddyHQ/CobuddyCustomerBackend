@@ -191,6 +191,7 @@ model Customer {
   razorpayOrders  CustomerRazorpayOrder[]
   blockedUsers    CustomerBlock[]          @relation("Blocker")
   blockedByUsers  CustomerBlock[]          @relation("Blocked")
+  uploads         CustomerUpload[]
 
   @@map("customers")
 }
@@ -705,4 +706,25 @@ model CustomerBlock {
 
   @@unique([blockerId, blockedId])
   @@map("customer_blocks")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PRIVATE FILE UPLOADS (IDOR PREVENTION)
+// Tracks which customerId owns each private file.
+// streamPrivateFile() verifies ownership before serving.
+// ─────────────────────────────────────────────────────────────────────────────
+
+model CustomerUpload {
+  id           String   @id @default(uuid())
+  customerId   String
+  filename     String   @unique          // UUID filename as stored on disk
+  originalName String
+  mimeType     String
+  isPrivate    Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([customerId])
+  @@map("customer_uploads")
 }

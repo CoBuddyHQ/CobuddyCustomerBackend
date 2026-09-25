@@ -237,35 +237,42 @@ export class BookingService {
       },
     });
 
-    // Process wallet refund if applicable
-    if (refundAmount > 0) {
-      // Update wallet balance
-      await this.prisma.customerWallet.updateMany({
-        where: { customerId },
-        data: { balance: { increment: refundAmount } },
+    // Process wallet refund ONLY if booking was actually paid
+    const isPaid = (booking.paymentStatus as any) === 'paid' || booking.paymentStatus === 'completed';
+    const actualRefundAmount = isPaid ? refundAmount : 0;
+
+    if (actualRefundAmount > 0) {
+      await this.prisma.$transaction(async (tx) => {
+        // Update wallet balance
+        await tx.customerWallet.updateMany({
+          where: { customerId },
+          data: { balance: { increment: actualRefundAmount } },
+        });
+
+        // Create refund transaction record
+        await tx.customerTransaction.create({
+          data: {
+            customerId,
+            bookingId,
+            type: 'refund',
+            amount: actualRefundAmount,
+            description: `Refund — Booking Cancelled (${refundPercent}% policy applied)`,
+            status: 'completed',
+          },
+        });
+
+        // Send notification
+        await tx.customerNotification.create({
+          data: {
+            customerId,
+            title: `Refund of ₹${actualRefundAmount} Processed`,
+            description: `Your ${refundPercent}% refund has been added to your CoBuddy wallet.`,
+            category: 'payment',
+            icon: 'wallet',
+            iconColor: '#27AE60',
+          },
+        });
       });
-      // Create refund transaction record
-      await this.prisma.customerTransaction.create({
-        data: {
-          customerId,
-          bookingId,
-          type: 'refund',
-          amount: refundAmount,
-          description: `Refund — Booking Cancelled (${refundPercent}% policy applied)`,
-          status: 'completed',
-        },
-      }).catch(() => {}); // non-fatal
-      // Send notification
-      await this.prisma.customerNotification.create({
-        data: {
-          customerId,
-          title: `Refund of ₹${refundAmount} Processed`,
-          description: `Your ${refundPercent}% refund has been added to your CoBuddy wallet.`,
-          category: 'payment',
-          icon: 'wallet',
-          iconColor: '#27AE60',
-        },
-      }).catch(() => {});
     }
 
     const response = this.buildBookingResponse(updated);

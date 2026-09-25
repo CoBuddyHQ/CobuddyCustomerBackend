@@ -3,6 +3,14 @@ import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentCustomer } from '../../common/decorators/current-customer.decorator';
 import { AccountService } from './account.service';
+import {
+  UpdateSettingsDto,
+  UpdateNotificationPrefsDto,
+  UpdateLanguagesDto,
+  RequestOtpChangeMobileDto,
+  VerifyChangeMobileDto,
+  ReactivationRequestDto,
+} from './dto/account.dto';
 
 @ApiTags('Account')
 @ApiBearerAuth('customer-jwt')
@@ -18,8 +26,8 @@ export class AccountController {
   }
 
   @Patch('settings')
-  @ApiOperation({ summary: 'Update account settings' })
-  updateSettings(@CurrentCustomer() customer: any, @Body() body: any) {
+  @ApiOperation({ summary: 'Update account settings (whitelist-validated DTO)' })
+  updateSettings(@CurrentCustomer() customer: any, @Body() body: UpdateSettingsDto) {
     return this.accountService.updateSettings(customer.id, body);
   }
 
@@ -72,8 +80,8 @@ export class AccountController {
   }
 
   @Patch('notification-preferences')
-  @ApiOperation({ summary: 'Update notification preferences' })
-  updateNotificationPreferences(@CurrentCustomer() customer: any, @Body() body: any) {
+  @ApiOperation({ summary: 'Update notification preferences (whitelist-validated DTO)' })
+  updateNotificationPreferences(@CurrentCustomer() customer: any, @Body() body: UpdateNotificationPrefsDto) {
     return this.accountService.updateNotificationPreferences(customer.id, body);
   }
 
@@ -85,13 +93,13 @@ export class AccountController {
 
   @Patch('languages')
   @ApiOperation({ summary: 'Update language settings' })
-  updateLanguages(@CurrentCustomer() customer: any, @Body() body: { appLanguage?: string; spokenLanguages?: string[] }) {
+  updateLanguages(@CurrentCustomer() customer: any, @Body() body: UpdateLanguagesDto) {
     return this.accountService.updateLanguages(customer.id, body);
   }
 
   @Post('reactivate-request')
   @ApiOperation({ summary: 'Submit account reactivation review request' })
-  submitReactivationRequest(@Body() body: { phone?: string; email?: string; reason?: string }) {
+  submitReactivationRequest(@Body() body: ReactivationRequestDto) {
     return this.accountService.submitReactivationRequest(body);
   }
 
@@ -99,7 +107,7 @@ export class AccountController {
   @ApiOperation({ summary: 'Request OTPs for old and new mobile numbers' })
   requestChangeMobileOtp(
     @CurrentCustomer() customer: any,
-    @Body() body: { oldPhone: string; newPhone: string },
+    @Body() body: RequestOtpChangeMobileDto,
   ) {
     return this.accountService.requestChangeMobileOtp(customer.id, body.oldPhone, body.newPhone);
   }
@@ -108,7 +116,7 @@ export class AccountController {
   @ApiOperation({ summary: 'Verify both OTPs and commit mobile number update' })
   verifyChangeMobile(
     @CurrentCustomer() customer: any,
-    @Body() body: { oldPhone: string; newPhone: string; oldOtp: string; newOtp: string },
+    @Body() body: VerifyChangeMobileDto,
   ) {
     return this.accountService.verifyChangeMobile(
       customer.id,

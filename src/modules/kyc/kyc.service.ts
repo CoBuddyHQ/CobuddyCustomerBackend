@@ -62,7 +62,10 @@ export class KycService {
       const finalFront = frontDocUrl || dto.frontDocUrl || dto.frontDocUri || 'https://images.unsplash.com/photo-1544717305-2782549b5136';
       const finalBack = backDocUrl || dto.backDocUrl || dto.backDocUri || 'https://images.unsplash.com/photo-1544717305-2782549b5136';
 
-      this.logger.log(`[KYC SUBMIT] customerId: ${customerId} | docType: ${docType} | docNumber: ${docNumber} | legalName: ${legalName}`);
+      // Mask PII in logs: show only doc type + last-4 of docNumber
+      const maskedDoc = docNumber.length > 4 ? `****${docNumber.slice(-4)}` : '****';
+      const maskedName = legalName.length > 2 ? `${legalName[0]}${'*'.repeat(legalName.length - 2)}${legalName.slice(-1)}` : '**';
+      this.logger.log(`[KYC SUBMIT] customerId: ${customerId} | docType: ${docType} | docNumber: ${maskedDoc} | legalName: ${maskedName}`);
 
       // Upsert KYC record
       const kyc = await this.prisma.customerKyc.upsert({
@@ -120,8 +123,8 @@ export class KycService {
       update: { livenessUrl: finalLiveness },
     });
 
-    // Auto-approve in development
-    if (process.env.NODE_ENV === 'development' || !process.env.NODE_ENV) {
+    // Auto-approve ONLY in explicit development — never in production or staging
+    if (process.env.NODE_ENV === 'development') {
       await this.prisma.customerKyc.update({
         where: { customerId },
         data: { status: 'verified', verifiedAt: new Date() },

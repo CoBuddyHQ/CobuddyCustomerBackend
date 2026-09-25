@@ -207,6 +207,8 @@ export class PaymentService {
     razorpay_signature: string;
   }) {
     const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = body;
+
+    // 1. Verify HMAC SHA256 signature
     const expectedSignature = crypto
       .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET ?? '')
       .update(`${razorpay_order_id}|${razorpay_payment_id}`)
@@ -216,38 +218,104 @@ export class PaymentService {
     const isDevSignature = isDev && (razorpay_signature === 'dev_bypass_signature' || razorpay_signature.startsWith('dev_sig_'));
 
     if (!isDevSignature && expectedSignature !== razorpay_signature) {
-      throw new BadRequestException('Payment verification failed');
+      throw new BadRequestException('Payment verification failed: invalid signature');
     }
 
+    // 2. Find order and enforce ownership (IDOR check)
     const order = await this.prisma.customerRazorpayOrder.findUnique({
       where: { orderId: razorpay_order_id },
     });
     if (!order) throw new BadRequestException('Order not found');
+    if (order.customerId !== customerId) {
+      throw new BadRequestException('Unauthorized: order does not belong to this customer');
+    }
 
-    await this.prisma.customerRazorpayOrder.update({
-      where: { orderId: razorpay_order_id },
-      data: { paymentId: razorpay_payment_id, signature: razorpay_signature, status: 'paid' },
-    });
-
-    // Credit wallet
-    await this.prisma.customerWallet.update({
-      where: { customerId },
-      data: { balance: { increment: order.amount } },
-    });
-
-    // Record transaction
-    await this.prisma.customerTransaction.create({
-      data: {
-        customerId,
-        type: 'add_money',
+    // 3. Idempotency check — prevent double top-up
+    if (order.status === 'paid') {
+      return {
+        message: 'Wallet top-up already verified',
+        paymentId: order.paymentId ?? razorpay_payment_id,
         amount: order.amount,
-        description: 'Wallet top-up',
-        paymentSource: `Razorpay: ${razorpay_payment_id}`,
-        referenceId: razorpay_payment_id,
-        status: 'completed',
-      },
+      };
+    }
+
+    // 4. Atomic transaction updating Order + Wallet + Transaction Ledger
+    await this.prisma.$transaction(async (tx) => {
+      await tx.customerRazorpayOrder.update({
+        where: { orderId: razorpay_order_id },
+        data: { paymentId: razorpay_payment_id, signature: razorpay_signature, status: 'paid' },
+      });
+
+      await tx.customerWallet.update({
+        where: { customerId },
+        data: { balance: { increment: order.amount } },
+      });
+
+      await tx.customerTransaction.create({
+        data: {
+          customerId,
+          type: 'add_money',
+          amount: order.amount,
+          description: 'Wallet top-up',
+          paymentSource: `Razorpay: ${razorpay_payment_id}`,
+          referenceId: razorpay_payment_id,
+          status: 'completed',
+        },
+      });
     });
 
-    return { message: 'Wallet credited successfully', amount: order.amount };
+    return { message: 'Wallet credited successfully', amount: order.amount, paymentId: razorpay_payment_id };
+  }
+
+  // ── RAZORPAY WEBHOOK HANDLER ──────────────────────────────────────────────
+  async handleWebhook(signature: string, rawBody: Buffer | string) {
+    const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET;
+    if (!webhookSecret) {
+      this.logger.warn('Razorpay webhook secret is not configured.');
+      return { status: 'NOT_CONFIGURED', message: 'Razorpay webhook secret is not configured.' };
+    }
+
+    const expectedSignature = crypto
+      .createHmac('sha256', webhookSecret)
+      .update(rawBody)
+      .digest('hex');
+
+    if (expectedSignature !== signature) {
+      throw new BadRequestException('Invalid webhook signature');
+    }
+
+    const payload = typeof rawBody === 'string' ? JSON.parse(rawBody) : JSON.parse(rawBody.toString());
+    this.logger.log(`Razorpay customer webhook event received: ${payload.event}`);
+
+    // Handle payment.captured
+    if (payload.event === 'payment.captured') {
+      const paymentEntity = payload.payload?.payment?.entity;
+      const orderId = paymentEntity?.order_id;
+      const paymentId = paymentEntity?.id;
+
+      if (orderId) {
+        const order = await this.prisma.customerRazorpayOrder.findUnique({
+          where: { orderId },
+        });
+
+        if (order && order.status !== 'paid') {
+          await this.prisma.$transaction(async (tx) => {
+            await tx.customerRazorpayOrder.update({
+              where: { orderId },
+              data: { status: 'paid', paymentId },
+            });
+
+            if (order.bookingId) {
+              await tx.customerBooking.update({
+                where: { id: order.bookingId },
+                data: { paymentStatus: 'completed', status: 'confirmed' },
+              });
+            }
+          });
+        }
+      }
+    }
+
+    return { received: true, event: payload.event };
   }
 }

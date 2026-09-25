@@ -223,7 +223,13 @@ export class AuthService {
   }
 
   private sanitizeCustomer(customer: any) {
-    const { ...safe } = customer;
+    // Explicitly exclude fields that must never reach the client
+    const {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      otp, otpExpiry, otpAttempts, refreshTokens,
+      kyc,   // nested KYC object can contain docNumber — expose via dedicated /kyc endpoint
+      ...safe
+    } = customer;
     return safe;
   }
 }
