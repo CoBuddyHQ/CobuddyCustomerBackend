@@ -31,8 +31,8 @@ export class KycController {
   }
 
   @Post('document')
-  @ApiOperation({ summary: 'Submit KYC document info + front/back images' })
-  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Submit KYC document info + optional front/back images' })
+  @ApiConsumes('multipart/form-data', 'application/json')
   @UseInterceptors(
     FileFieldsInterceptor(
       [{ name: 'frontDoc', maxCount: 1 }, { name: 'backDoc', maxCount: 1 }],
@@ -42,10 +42,14 @@ export class KycController {
   submitDocument(
     @CurrentCustomer() customer: any,
     @Body() dto: SubmitKycDocumentDto,
-    @UploadedFiles() files: { frontDoc?: any[]; backDoc?: any[] },
+    @UploadedFiles() files?: { frontDoc?: any[]; backDoc?: any[] },
   ) {
-    const frontDocUrl = files?.frontDoc?.[0] ? `/uploads/kyc/documents/${files.frontDoc[0].filename}` : undefined;
-    const backDocUrl = files?.backDoc?.[0] ? `/uploads/kyc/documents/${files.backDoc[0].filename}` : undefined;
+    const frontDocUrl = files?.frontDoc?.[0]
+      ? `/uploads/kyc/documents/${files.frontDoc[0].filename}`
+      : dto.frontDocUrl || dto.frontDocUri || undefined;
+    const backDocUrl = files?.backDoc?.[0]
+      ? `/uploads/kyc/documents/${files.backDoc[0].filename}`
+      : dto.backDocUrl || dto.backDocUri || undefined;
     return this.kycService.submitDocument(customer.id, dto, frontDocUrl, backDocUrl);
   }
 

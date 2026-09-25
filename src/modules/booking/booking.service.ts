@@ -163,6 +163,30 @@ export class BookingService {
       orderBy: { createdAt: 'desc' },
     });
 
+    try {
+      const counts = await this.prisma.customerBooking.groupBy({
+        by: ['status'],
+        where: { customerId },
+        _count: { status: true },
+      });
+      const statusMap: Record<string, number> = {};
+      let totalAll = 0;
+      for (const c of counts) {
+        statusMap[c.status] = c._count.status;
+        totalAll += c._count.status;
+      }
+      const pendingCount = (statusMap['pending'] || 0) + (statusMap['counter_proposed'] || 0);
+      const acceptedCount = (statusMap['accepted'] || 0) + (statusMap['confirmed'] || 0) + (statusMap['in_progress'] || 0);
+      const completedCount = statusMap['completed'] || 0;
+      const cancelledCount = statusMap['cancelled'] || 0;
+
+      this.logger.log(
+        `[Customer Bookings] customerId: ${customerId} | Database: customer_bookings | Total: ${totalAll} | Pending: ${pendingCount} | Accepted: ${acceptedCount} | Completed: ${completedCount} | Cancelled: ${cancelledCount} | Filter: ${filter || 'all'} | Returned: ${bookings.length}`
+      );
+    } catch {
+      // Safe fallback if groupBy fails
+    }
+
     return bookings.map(b => this.buildBookingResponse(b));
   }
 
@@ -289,10 +313,20 @@ export class BookingService {
     if (!booking) throw new NotFoundException('Counter offer not found');
 
     const newStatus = dto.action === 'accept' ? 'accepted' : 'declined';
+    const updateData: any = { status: newStatus as any };
+
+    if (dto.action === 'accept') {
+      if (booking.counterDate) updateData.date = booking.counterDate;
+      if (booking.counterTime) updateData.time = booking.counterTime;
+      if (booking.counterVenueName) updateData.venueName = booking.counterVenueName;
+      if (booking.counterDurationHours) updateData.durationHours = booking.counterDurationHours;
+      if (booking.counterTotalAmount) updateData.totalAmount = booking.counterTotalAmount;
+      updateData.acceptedAt = new Date();
+    }
 
     const updated = await this.prisma.customerBooking.update({
       where: { id: bookingId },
-      data: { status: newStatus as any },
+      data: updateData,
     });
 
     return this.buildBookingResponse(updated);
@@ -384,7 +418,7 @@ export class BookingService {
           totalAmount: `₹${booking.totalAmount.toLocaleString('en-IN')}`,
         },
       },
-      counterOffer: booking.counterDate ? {
+      counterOffer: (booking.counterDate || booking.counterTime || booking.counterMessage) ? {
         date: booking.counterDate,
         time: booking.counterTime,
         venueName: booking.counterVenueName,

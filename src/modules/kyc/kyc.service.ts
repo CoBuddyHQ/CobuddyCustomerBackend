@@ -1,9 +1,11 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SubmitKycDocumentDto } from './dto/kyc.dto';
 
 @Injectable()
 export class KycService {
+  private readonly logger = new Logger(KycService.name);
+
   constructor(private prisma: PrismaService) {}
 
   async getStatus(customerId: string) {
@@ -51,45 +53,53 @@ export class KycService {
     frontDocUrl?: string,
     backDocUrl?: string,
   ) {
-    const rawType = (dto.docType || dto.documentType || 'AADHAAR').toUpperCase();
-    const docType = rawType === 'DRIVING_LICENSE' ? 'DL' : rawType;
-    const docNumber = dto.docNumber || dto.documentNumber || 'DOC-VERIFIED';
-    const legalName = dto.legalName || 'Verified Customer';
+    try {
+      const rawType = (dto.docType || dto.documentType || 'AADHAAR').toUpperCase();
+      const docType = rawType === 'DRIVING_LICENSE' ? 'DL' : rawType;
+      const docNumber = (dto.docNumber || dto.documentNumber || 'DOC-VERIFIED').trim();
+      const legalName = (dto.legalName || 'Verified Customer').trim();
 
-    const finalFront = frontDocUrl || dto.frontDocUrl || dto.frontDocUri || 'https://images.unsplash.com/photo-1544717305-2782549b5136';
-    const finalBack = backDocUrl || dto.backDocUrl || dto.backDocUri || 'https://images.unsplash.com/photo-1544717305-2782549b5136';
+      const finalFront = frontDocUrl || dto.frontDocUrl || dto.frontDocUri || 'https://images.unsplash.com/photo-1544717305-2782549b5136';
+      const finalBack = backDocUrl || dto.backDocUrl || dto.backDocUri || 'https://images.unsplash.com/photo-1544717305-2782549b5136';
 
-    // Upsert KYC record
-    const kyc = await this.prisma.customerKyc.upsert({
-      where: { customerId },
-      create: {
-        customerId,
-        docType: docType as any,
-        docNumber: docNumber.trim(),
-        legalName: legalName.trim(),
-        frontDocUrl: finalFront,
-        backDocUrl: finalBack,
-        status: 'pending',
-        submittedAt: new Date(),
-      },
-      update: {
-        docType: docType as any,
-        docNumber: docNumber.trim(),
-        legalName: legalName.trim(),
-        frontDocUrl: finalFront,
-        backDocUrl: finalBack,
-        status: 'pending',
-        submittedAt: new Date(),
-      },
-    });
+      this.logger.log(`[KYC SUBMIT] customerId: ${customerId} | docType: ${docType} | docNumber: ${docNumber} | legalName: ${legalName}`);
 
-    // Update customer status to pending
-    await this.prisma.customer.update({
-      where: { id: customerId },
-      data: { kycStatus: 'pending' },
-    });
+      // Upsert KYC record
+      const kyc = await this.prisma.customerKyc.upsert({
+        where: { customerId },
+        create: {
+          customerId,
+          docType: docType as any,
+          docNumber,
+          legalName,
+          frontDocUrl: finalFront,
+          backDocUrl: finalBack,
+          status: 'pending',
+          submittedAt: new Date(),
+        },
+        update: {
+          docType: docType as any,
+          docNumber,
+          legalName,
+          frontDocUrl: finalFront,
+          backDocUrl: finalBack,
+          status: 'pending',
+          submittedAt: new Date(),
+        },
+      });
 
-    return { message: 'Document submitted for review', kyc };
+      // Update customer status to pending
+      await this.prisma.customer.update({
+        where: { id: customerId },
+        data: { kycStatus: 'pending' },
+      });
+
+      this.logger.log(`[KYC SUBMIT] Success — KYC record: ${kyc.id}`);
+      return { message: 'Document submitted for review', kyc };
+    } catch (err: any) {
+      this.logger.error(`[KYC SUBMIT ERROR] customerId: ${customerId} | ${err.message}`, err.stack);
+      throw err;
+    }
   }
 
   async submitSelfie(customerId: string, selfieUrl?: string) {
