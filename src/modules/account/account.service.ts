@@ -76,12 +76,14 @@ export class AccountService {
   }
 
   async deleteAccount(customerId: string) {
-    await this.prisma.customer.update({
+    const customer = await this.prisma.customer.findUnique({ where: { id: customerId } });
+    if (!customer) throw new NotFoundException('Customer not found');
+
+    // Permanently purge customer and cascade all related records (bookings, sessions, kyc, etc.)
+    await this.prisma.customer.delete({
       where: { id: customerId },
-      data: { accountStatus: 'deleted' },
     });
-    await this.prisma.customerRefreshToken.deleteMany({ where: { customerId } });
-    return { message: 'Account scheduled for deletion' };
+    return { success: true, message: 'Account and all associated personal data have been permanently deleted.' };
   }
 
   async getNotificationPreferences(customerId: string) {
@@ -219,38 +221,6 @@ export class AccountService {
       success: true,
       message: 'Mobile number updated successfully',
       newPhone,
-    };
-  }
-
-  // ─── DEACTIVATE ACCOUNT ───────────────────────────────────────────────────
-  async deactivateAccount(customerId: string) {
-    const customer = await this.prisma.customer.findUnique({ where: { id: customerId } });
-    if (!customer) throw new NotFoundException('Customer not found');
-
-    await this.prisma.customer.update({
-      where: { id: customerId },
-      data: { accountStatus: 'deactivated' },
-    });
-
-    return {
-      success: true,
-      message: 'Account has been deactivated successfully',
-    };
-  }
-
-  // ─── DELETE ACCOUNT (COMPLETE PURGE & CASCADE) ───────────────────────────
-  async deleteAccount(customerId: string) {
-    const customer = await this.prisma.customer.findUnique({ where: { id: customerId } });
-    if (!customer) throw new NotFoundException('Customer not found');
-
-    // Delete customer in database (cascades all related records across all tables)
-    await this.prisma.customer.delete({
-      where: { id: customerId },
-    });
-
-    return {
-      success: true,
-      message: 'Account and all associated personal data have been permanently deleted.',
     };
   }
 }
