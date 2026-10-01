@@ -106,14 +106,13 @@ async function bootstrap() {
   }
 
   // ── DB HEALTH PROBE ───────────────────────────────────────────────────────
-  // Verify DB connection at startup; crash-fast if unreachable
+  // Verify DB connection at startup; log error if unreachable (do not hard crash app)
   try {
     const prisma = app.get(PrismaService);
     await prisma.$queryRaw`SELECT 1`;
     logger.log('✅ Database connection verified');
-  } catch (err) {
-    logger.error('❌ Database connection failed at startup — aborting', err);
-    process.exit(1);
+  } catch (err: any) {
+    logger.error('⚠️ Database connection failed at startup — continuing app startup', err?.message || err);
   }
 
   // ── START ──────────────────────────────────────────────────────────────────
