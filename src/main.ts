@@ -64,8 +64,9 @@ async function bootstrap() {
   app.useGlobalFilters(new HttpExceptionFilter());
   app.useGlobalInterceptors(new LoggingInterceptor(), new ResponseInterceptor());
 
-  // ── SWAGGER — only in non-production ─────────────────────────────────────
-  if (!isProd) {
+  // ── SWAGGER ───────────────────────────────────────────────────────────────
+  const enableSwagger = !isProd || process.env.ENABLE_SWAGGER === 'true';
+  if (enableSwagger) {
     const config = new DocumentBuilder()
       .setTitle('CoBuddy Customer API')
       .setDescription(
@@ -99,9 +100,9 @@ async function bootstrap() {
       swaggerOptions: { persistAuthorization: true },
     });
 
-    logger.log('📚 Swagger OpenAPI Docs: enabled (dev only)');
+    logger.log('📚 Swagger OpenAPI Docs: enabled');
   } else {
-    logger.log('🔒 Swagger disabled in production');
+    logger.log('🔒 Swagger disabled (set ENABLE_SWAGGER=true to enable)');
   }
 
   // ── DB HEALTH PROBE ───────────────────────────────────────────────────────
@@ -119,7 +120,7 @@ async function bootstrap() {
   const port = process.env.PORT ?? 4002;
   await app.listen(port);
   logger.log(`🚀 CoBuddy Customer Backend running on: http://localhost:${port}`);
-  if (!isProd) {
+  if (enableSwagger) {
     logger.log(`📚 Swagger OpenAPI Docs: http://localhost:${port}/api/docs`);
   }
 }
