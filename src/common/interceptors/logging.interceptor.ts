@@ -19,11 +19,15 @@ export class LoggingInterceptor implements NestInterceptor {
     const { method, url, body, query, ip } = req;
     const now = Date.now();
 
-    // Sanitize sensitive fields (password, pass, pin, token, secret) for log safety
+    // Sanitize sensitive fields — otp is shown in dev for debugging
+    const isDev = process.env.NODE_ENV === 'development';
     const sanitize = (obj: any) => {
       if (!obj || typeof obj !== 'object') return obj;
       const copy = { ...obj };
-      ['password', 'pass', 'pin', 'token', 'secret', 'otp'].forEach(key => {
+      const sensitiveKeys = isDev
+        ? ['password', 'pass', 'pin', 'token', 'secret']  // otp visible in dev
+        : ['password', 'pass', 'pin', 'token', 'secret', 'otp'];
+      sensitiveKeys.forEach(key => {
         if (key in copy && typeof copy[key] === 'string') {
           copy[key] = '***MASKED***';
         }

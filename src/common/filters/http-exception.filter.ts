@@ -33,11 +33,15 @@ export class HttpExceptionFilter implements ExceptionFilter {
         ? message
         : { message };
 
-    // Sanitize sensitive fields (password, pass, pin, token, secret)
+    // Sanitize sensitive fields — otp is shown in dev for debugging
+    const isDev = process.env.NODE_ENV === 'development';
     const sanitize = (obj: any) => {
       if (!obj || typeof obj !== 'object') return obj;
       const copy = { ...obj };
-      ['password', 'pass', 'pin', 'token', 'secret', 'otp'].forEach(key => {
+      const sensitiveKeys = isDev
+        ? ['password', 'pass', 'pin', 'token', 'secret']  // otp visible in dev
+        : ['password', 'pass', 'pin', 'token', 'secret', 'otp'];
+      sensitiveKeys.forEach(key => {
         if (key in copy && typeof copy[key] === 'string') {
           copy[key] = '***MASKED***';
         }
