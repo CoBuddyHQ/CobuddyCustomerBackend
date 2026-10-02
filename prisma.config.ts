@@ -1,11 +1,9 @@
 import 'dotenv/config';
 import { defineConfig } from 'prisma/config';
 
-const connectionString = process.env.DATABASE_URL;
-
-if (!connectionString) {
-  throw new Error('DATABASE_URL environment variable is not set');
-}
+const connectionString =
+  process.env.DATABASE_URL ||
+  'postgresql://dummy:dummy@localhost:5432/postgres?sslmode=require';
 
 export default defineConfig({
   schema: './prisma/schema.prisma',

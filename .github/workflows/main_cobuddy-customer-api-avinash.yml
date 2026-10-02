@@ -30,9 +30,13 @@ jobs:
 
       - name: Generate Prisma Client
         run: npx prisma generate
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL || 'postgresql://dummy:dummy@localhost:5432/dummy?sslmode=require' }}
 
       - name: Build backend
         run: npm run build
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL || 'postgresql://dummy:dummy@localhost:5432/dummy?sslmode=require' }}
 
       - name: Azure login
         uses: azure/login@v2
