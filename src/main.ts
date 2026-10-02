@@ -16,8 +16,8 @@ async function bootstrap() {
   const isProd = process.env.NODE_ENV === 'production';
 
   const app = await NestFactory.create(AppModule, {
-    // In production log only errors+warnings; in dev log everything
-    logger: isProd ? ['error', 'warn'] : ['error', 'warn', 'log', 'debug'],
+    // Show logs in terminal so requests, responses and OTP are visible
+    logger: ['error', 'warn', 'log', 'debug'],
     rawBody: true,
   });
 
