@@ -49,3 +49,8 @@ backups/
 *.sql
 *.sql.gz
 
+# Uploads & User generated content
+uploads/
+/uploads
+
+
