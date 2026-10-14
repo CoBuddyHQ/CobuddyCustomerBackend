@@ -45,13 +45,20 @@ export class BookingService {
     const actId = dto.activityId || 'INT-1';
     const multiplier = ACTIVITY_MULTIPLIERS[actId] || 1.0;
     
-    // Server-side authoritative pricing
-    const baseRate = (dto.baseRate ?? 500) * multiplier;
-    const durationHours = dto.durationHours ?? 2;
+    // Server-side authoritative pricing — never allow client-manipulated sub-standard or negative rates
+    const MIN_BASE_HOURLY_RATE = 300;
+    const STANDARD_DEFAULT_RATE = 500;
+    const clientRate = Number(dto.baseRate);
+    const validClientRate = (!isNaN(clientRate) && clientRate >= MIN_BASE_HOURLY_RATE)
+      ? clientRate
+      : STANDARD_DEFAULT_RATE;
+    const baseRate = validClientRate * multiplier;
+    const durationHours = Math.max(Number(dto.durationHours) || 1, 1);
     const baseTotal = Math.round(baseRate * durationHours);
     const platformFee = Math.round(baseTotal * PLATFORM_FEE_PERCENT);
     const taxAmount = Math.round(baseTotal * TAX_PERCENT);
     const totalAmount = baseTotal + platformFee + taxAmount;
+
 
     const vName = dto.venue?.name || dto.venueName || 'Public Venue';
     const vArea = dto.venue?.area || '';

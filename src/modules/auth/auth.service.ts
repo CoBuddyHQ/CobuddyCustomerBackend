@@ -2,11 +2,18 @@ import {
   Injectable,
   BadRequestException,
   UnauthorizedException,
+  ServiceUnavailableException,
   Logger,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import * as crypto from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SendOtpDto, VerifyOtpDto } from './dto/auth.dto';
+import {
+  normalizePhone,
+  isTestPhoneAllowlisted,
+  isTestOtpAllowed,
+} from '../../common/utils/otp-test.util';
 
 @Injectable()
 export class AuthService {
@@ -20,9 +27,26 @@ export class AuthService {
   // ── SEND OTP ──────────────────────────────────────────────────────────────
   async sendOtp(dto: SendOtpDto) {
     const { phone } = dto;
+    const normalized = normalizePhone(phone);
+    if (!normalized || normalized.length < 10) {
+      throw new BadRequestException('Invalid phone number format');
+    }
 
-    // Generate 6-digit OTP — support 123456 bypass
-    const otp = process.env.OTP_DEV_BYPASS || '123456';
+    const isAllowlisted = isTestPhoneAllowlisted(phone);
+    let otp: string;
+
+    if (isAllowlisted) {
+      otp = '12345465';
+    } else {
+      const smsProvider = process.env.SMS_PROVIDER;
+      const msg91Key = process.env.MSG91_AUTH_KEY;
+      if (!smsProvider && !msg91Key) {
+        throw new ServiceUnavailableException(
+          'SMS provider not configured. Please contact support or configure an SMS provider.',
+        );
+      }
+      otp = crypto.randomInt(100000, 999999).toString();
+    }
 
     const expiresAt = new Date(
       Date.now() + (parseInt(process.env.OTP_EXPIRES_IN_MINUTES ?? '10') * 60 * 1000),
@@ -36,11 +60,8 @@ export class AuthService {
       data: { phone, otp, expiresAt },
     });
 
-    this.logger.log(`[AUTH] OTP for ${phone}: ${otp}`);
-
     return {
       message: 'OTP sent successfully',
-      devOtp: otp,
     };
   }
 
@@ -48,42 +69,45 @@ export class AuthService {
   async verifyOtp(dto: VerifyOtpDto, deviceInfo?: string, ipAddress?: string) {
     const { phone, otp } = dto;
 
-    const bypassOtp = process.env.OTP_DEV_BYPASS || '123456';
-    const isDevBypass = otp === '123456' || otp === bypassOtp;
+    const otpRecord = await this.prisma.customerOtp.findFirst({
+      where: { phone },
+      orderBy: { createdAt: 'desc' },
+    });
 
-    if (!isDevBypass) {
-      const otpRecord = await this.prisma.customerOtp.findFirst({
-        where: { phone },
-        orderBy: { createdAt: 'desc' },
-      });
-
-      if (!otpRecord) {
-        throw new BadRequestException('OTP not found. Please request a new one.');
-      }
-
-      if (otpRecord.expiresAt < new Date()) {
-        await this.prisma.customerOtp.delete({ where: { id: otpRecord.id } });
-        throw new BadRequestException('OTP has expired. Please request a new one.');
-      }
-
-      const maxAttempts = parseInt(process.env.OTP_MAX_ATTEMPTS ?? '5');
-      if (otpRecord.attempts >= maxAttempts) {
-        throw new BadRequestException('Too many failed attempts. Please request a new OTP.');
-      }
-
-      if (otpRecord.otp !== otp) {
-        await this.prisma.customerOtp.update({
-          where: { id: otpRecord.id },
-          data: { attempts: { increment: 1 } },
-        });
-        throw new UnauthorizedException('Invalid OTP');
-      }
-
-      // OTP verified — delete it
-      await this.prisma.customerOtp.delete({ where: { id: otpRecord.id } });
-    } else {
-      await this.prisma.customerOtp.deleteMany({ where: { phone } });
+    if (!otpRecord) {
+      throw new BadRequestException('OTP not found. Please request a new one.');
     }
+
+    if (otpRecord.expiresAt < new Date()) {
+      await this.prisma.customerOtp.delete({ where: { id: otpRecord.id } });
+      throw new BadRequestException('OTP has expired. Please request a new one.');
+    }
+
+    const maxAttempts = parseInt(process.env.OTP_MAX_ATTEMPTS ?? '5');
+    if (otpRecord.attempts >= maxAttempts) {
+      throw new BadRequestException('Too many failed attempts. Please request a new OTP.');
+    }
+
+    // Fixed test OTP check: only allow if flag enabled and phone is in allowlist
+    if (otp === '12345465' && !isTestOtpAllowed(phone, otp)) {
+      await this.prisma.customerOtp.update({
+        where: { id: otpRecord.id },
+        data: { attempts: { increment: 1 } },
+      });
+      throw new UnauthorizedException('Invalid OTP');
+    }
+
+    if (otpRecord.otp !== otp) {
+      await this.prisma.customerOtp.update({
+        where: { id: otpRecord.id },
+        data: { attempts: { increment: 1 } },
+      });
+      throw new UnauthorizedException('Invalid OTP');
+    }
+
+    // OTP verified — single use deletion
+    await this.prisma.customerOtp.delete({ where: { id: otpRecord.id } });
+
 
     // Find or create customer
     let customer = await this.prisma.customer.findUnique({ where: { phone } });

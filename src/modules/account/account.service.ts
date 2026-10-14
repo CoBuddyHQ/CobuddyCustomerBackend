@@ -1,5 +1,7 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, UnauthorizedException } from '@nestjs/common';
+import * as crypto from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
+import { isTestPhoneAllowlisted, isTestOtpAllowed } from '../../common/utils/otp-test.util';
 
 @Injectable()
 export class AccountService {
@@ -168,8 +170,16 @@ export class AccountService {
       throw new NotFoundException('New phone number is already registered to another account');
     }
 
-    const oldOtp = process.env.OTP_DEV_BYPASS || '123456';
-    const newOtp = process.env.OTP_DEV_BYPASS || '123456';
+    const isOldAllowlisted = isTestPhoneAllowlisted(oldPhone);
+    const isNewAllowlisted = isTestPhoneAllowlisted(newPhone);
+
+    const smsConfigured = Boolean(process.env.SMS_PROVIDER || process.env.MSG91_AUTH_KEY);
+    if (!smsConfigured && (!isOldAllowlisted || !isNewAllowlisted)) {
+      throw new BadRequestException('SMS service unavailable. Cannot send verification OTP to phone numbers.');
+    }
+
+    const oldOtp = isOldAllowlisted ? '12345465' : crypto.randomInt(100000, 999999).toString();
+    const newOtp = isNewAllowlisted ? '12345465' : crypto.randomInt(100000, 999999).toString();
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
 
     await this.prisma.customerOtp.deleteMany({ where: { phone: { in: [oldPhone, newPhone] } } });
@@ -183,8 +193,6 @@ export class AccountService {
     return {
       success: true,
       message: 'Verification OTPs sent to both old and new mobile numbers',
-      devOldOtp: oldOtp,
-      devNewOtp: newOtp,
     };
   }
 
@@ -194,21 +202,23 @@ export class AccountService {
       throw new NotFoundException('Current account number mismatch');
     }
 
-    const bypassOtp = process.env.OTP_DEV_BYPASS || '123456';
-    const bypass = (oldOtp === '123456' && newOtp === '123456') ||
-      (oldOtp === bypassOtp && newOtp === bypassOtp);
-
-    if (!bypass) {
-      const oldRecord = await this.prisma.customerOtp.findFirst({ where: { phone: oldPhone, otp: oldOtp } });
-      const newRecord = await this.prisma.customerOtp.findFirst({ where: { phone: newPhone, otp: newOtp } });
-
-      if (!oldRecord || oldRecord.expiresAt < new Date()) {
-        throw new NotFoundException('Invalid or expired OTP for old phone number');
-      }
-      if (!newRecord || newRecord.expiresAt < new Date()) {
-        throw new NotFoundException('Invalid or expired OTP for new phone number');
-      }
+    if (oldOtp === '12345465' && !isTestOtpAllowed(oldPhone, oldOtp)) {
+      throw new UnauthorizedException('Invalid OTP for old phone number');
     }
+    if (newOtp === '12345465' && !isTestOtpAllowed(newPhone, newOtp)) {
+      throw new UnauthorizedException('Invalid OTP for new phone number');
+    }
+
+    const oldRecord = await this.prisma.customerOtp.findFirst({ where: { phone: oldPhone, otp: oldOtp } });
+    const newRecord = await this.prisma.customerOtp.findFirst({ where: { phone: newPhone, otp: newOtp } });
+
+    if (!oldRecord || oldRecord.expiresAt < new Date()) {
+      throw new NotFoundException('Invalid or expired OTP for old phone number');
+    }
+    if (!newRecord || newRecord.expiresAt < new Date()) {
+      throw new NotFoundException('Invalid or expired OTP for new phone number');
+    }
+
 
     // Update customer phone and clean up OTPs
     await this.prisma.customer.update({

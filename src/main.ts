@@ -65,7 +65,8 @@ async function bootstrap() {
   app.useGlobalInterceptors(new LoggingInterceptor(), new ResponseInterceptor());
 
   // ── SWAGGER ───────────────────────────────────────────────────────────────
-  const enableSwagger = process.env.DISABLE_SWAGGER !== 'true';
+  // Disabled by default in production unless ENABLE_SWAGGER=true is explicitly set
+  const enableSwagger = !isProd || process.env.ENABLE_SWAGGER === 'true';
   if (enableSwagger) {
     const config = new DocumentBuilder()
       .setTitle('CoBuddy Customer API')

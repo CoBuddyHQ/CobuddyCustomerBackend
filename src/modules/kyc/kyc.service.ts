@@ -37,13 +37,23 @@ export class KycService {
       currentStep = 'PENDING_REVIEW';
     }
 
+    const maskedKyc = kyc
+      ? {
+          ...kyc,
+          docNumber:
+            kyc.docNumber && kyc.docNumber.length > 4
+              ? `****${kyc.docNumber.slice(-4)}`
+              : '****',
+        }
+      : null;
+
     return {
       status,
       currentStep,
       documentSubmitted,
       selfieSubmitted,
       livenessSubmitted,
-      kyc: kyc ?? null,
+      kyc: maskedKyc,
     };
   }
 
@@ -56,11 +66,18 @@ export class KycService {
     try {
       const rawType = (dto.docType || dto.documentType || 'AADHAAR').toUpperCase();
       const docType = rawType === 'DRIVING_LICENSE' ? 'DL' : rawType;
-      const docNumber = (dto.docNumber || dto.documentNumber || 'DOC-VERIFIED').trim();
+      const rawDocNum = dto.docNumber || dto.documentNumber;
+      if (!rawDocNum || !rawDocNum.trim()) {
+        throw new BadRequestException('Document number is required');
+      }
+      const docNumber = rawDocNum.trim();
       const legalName = (dto.legalName || 'Verified Customer').trim();
 
-      const finalFront = frontDocUrl || dto.frontDocUrl || dto.frontDocUri || 'https://images.unsplash.com/photo-1544717305-2782549b5136';
-      const finalBack = backDocUrl || dto.backDocUrl || dto.backDocUri || 'https://images.unsplash.com/photo-1544717305-2782549b5136';
+      const finalFront = frontDocUrl || dto.frontDocUrl || dto.frontDocUri;
+      if (!finalFront) {
+        throw new BadRequestException('Front document image or file is required');
+      }
+      const finalBack = backDocUrl || dto.backDocUrl || dto.backDocUri || null;
 
       // Mask PII in logs: show only doc type + last-4 of docNumber
       const maskedDoc = docNumber.length > 4 ? `****${docNumber.slice(-4)}` : '****';
@@ -98,7 +115,7 @@ export class KycService {
       });
 
       this.logger.log(`[KYC SUBMIT] Success — KYC record: ${kyc.id}`);
-      return { message: 'Document submitted for review', kyc };
+      return { message: 'Document submitted for review', kyc: { ...kyc, docNumber: maskedDoc } };
     } catch (err: any) {
       this.logger.error(`[KYC SUBMIT ERROR] customerId: ${customerId} | ${err.message}`, err.stack);
       throw err;
@@ -106,25 +123,29 @@ export class KycService {
   }
 
   async submitSelfie(customerId: string, selfieUrl?: string) {
-    const finalSelfie = selfieUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb';
+    if (!selfieUrl) {
+      throw new BadRequestException('Selfie file or URL is required');
+    }
     const kyc = await this.prisma.customerKyc.upsert({
       where: { customerId },
-      create: { customerId, selfieUrl: finalSelfie, status: 'pending', submittedAt: new Date() },
-      update: { selfieUrl: finalSelfie },
+      create: { customerId, selfieUrl, status: 'pending', submittedAt: new Date() },
+      update: { selfieUrl },
     });
     return { message: 'Selfie uploaded', kyc };
   }
 
   async submitLiveness(customerId: string, livenessUrl?: string) {
-    const finalLiveness = livenessUrl || 'https://sample-videos.com/video321/mp4/720/big_buck_bunny_720p_1mb.mp4';
+    if (!livenessUrl) {
+      throw new BadRequestException('Liveness verification video or file is required');
+    }
     await this.prisma.customerKyc.upsert({
       where: { customerId },
-      create: { customerId, livenessUrl: finalLiveness, status: 'pending', submittedAt: new Date() },
-      update: { livenessUrl: finalLiveness },
+      create: { customerId, livenessUrl, status: 'pending', submittedAt: new Date() },
+      update: { livenessUrl },
     });
 
-    // Auto-approve ONLY in explicit development — never in production or staging
-    if (process.env.NODE_ENV === 'development') {
+    // Auto-approve ONLY in explicit development with flag enabled
+    if (process.env.NODE_ENV === 'development' && process.env.AUTO_APPROVE_KYC === 'true') {
       await this.prisma.customerKyc.update({
         where: { customerId },
         data: { status: 'verified', verifiedAt: new Date() },

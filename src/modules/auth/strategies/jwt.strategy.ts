@@ -6,12 +6,18 @@ import { PrismaService } from '../../../prisma/prisma.service';
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy, 'customer-jwt') {
   constructor(private prisma: PrismaService) {
+    const isProd = process.env.NODE_ENV === 'production';
+    const secret = process.env.JWT_SECRET;
+    if (isProd && (!secret || secret === 'dev-secret-key-only')) {
+      throw new Error('FATAL: JWT_SECRET must be configured with a secure key in production');
+    }
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
-      secretOrKey: process.env.JWT_SECRET || 'dev-secret-key-only',
+      secretOrKey: secret || 'dev-secret-key-only',
     });
   }
+
 
   async validate(payload: { sub: string; phone: string }) {
     const customer = await this.prisma.customer.findUnique({
