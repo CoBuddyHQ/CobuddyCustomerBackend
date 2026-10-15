@@ -66,7 +66,10 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: cobuddy_customer_backend
-    restart: unless-stopped
+    env_file:
+      - .env
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       NODE_ENV: development
       PORT: 4002
@@ -83,6 +86,15 @@ services:
       RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET:-w2l3tVjYk6aH4zM9xQ8pL7nR}
 
       OTP_DEV_BYPASS: ${OTP_DEV_BYPASS:-123456}
+      OTP_TEST_BYPASS_ENABLED: ${OTP_TEST_BYPASS_ENABLED:-true}
+      OTP_TEST_ALLOWED_PHONES: ${OTP_TEST_ALLOWED_PHONES:-+919999999991,+919999999992,+918435892398,8435892398}
+
+      # Cross-backend S2S bridge to companion backend
+      COMPANION_API_URL: ${COMPANION_API_URL:-http://host.docker.internal:4001}
+      ADMIN_API_URL: ${ADMIN_API_URL:-http://host.docker.internal:4000}
+      INTERNAL_SERVICE_SECRET: ${INTERNAL_SERVICE_SECRET:-c0buddY_s2s_s3cr3t_pr0d_2026_xK9#mQ}
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-cobuddy-internal-service-s2s-token-2026}
+
 
     ports:
       - "4002:4002"
