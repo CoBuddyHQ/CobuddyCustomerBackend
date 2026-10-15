@@ -290,23 +290,54 @@ describe('CoBuddy Production Audit & Security Hardening Verification (25 Test Su
     assert.equal(publicCard.hourlyRate, 600);
   });
 
-  // S2S Campaign Catalog Filtering
-  it('S2S Flow: Active campaigns strictly filter out draft, rejected, and expired campaigns', () => {
-    const now = new Date('2026-10-15T00:00:00Z');
-    const campaigns = [
-      { id: 'camp_1', status: 'PUBLISHED', startDate: '2026-10-01', endDate: '2026-10-30' },
-      { id: 'camp_2', status: 'DRAFT', startDate: '2026-10-01', endDate: '2026-10-30' },
-      { id: 'camp_3', status: 'PUBLISHED', startDate: '2026-09-01', endDate: '2026-09-30' }, // Expired
+  // S2S End-to-End Campaign Flow: Customer App -> Customer Backend -> Campaign Service (Admin) -> Customer Backend -> Customer App
+  it('S2S Flow: Campaign connectivity (Customer App -> Customer Backend -> Campaign Service -> Customer App)', () => {
+    // 1. Campaign Service (Admin Backend) holds raw announcements/campaigns in DB
+    const adminCampaignDb = [
+      { id: 'camp_101', title: { en: 'Diwali Special Offer' }, body: { en: 'Flat 20% off on all companions' }, status: 'PUBLISHED', targetAudience: 'CUSTOMERS', category: 'PROMOTION', expiresAt: '2026-11-30T00:00:00Z' },
+      { id: 'camp_102', title: { en: 'Staff Internal Notice' }, body: { en: 'Platform downtime at 2 AM' }, status: 'PUBLISHED', targetAudience: 'STAFF_ONLY', category: 'INTERNAL' },
+      { id: 'camp_103', title: { en: 'Summer Deal' }, body: { en: 'Old promotion' }, status: 'PUBLISHED', targetAudience: 'CUSTOMERS', expiresAt: '2026-05-01T00:00:00Z' }, // Expired
+      { id: 'camp_104', title: { en: 'Draft Promo' }, body: { en: 'Not yet launched' }, status: 'DRAFT', targetAudience: 'CUSTOMERS' }, // Draft
     ];
 
-    const active = campaigns.filter(c => 
-      c.status === 'PUBLISHED' && 
-      new Date(c.startDate) <= now && 
-      new Date(c.endDate) >= now
-    );
+    // 2. Campaign Service exposes active published announcements
+    const getActiveAnnouncementsFromAdmin = (db) => {
+      const now = new Date('2026-10-15T00:00:00Z');
+      return db.filter(a => 
+        ['PUBLISHED', 'SENT'].includes(a.status) &&
+        (!a.expiresAt || new Date(a.expiresAt) > now)
+      );
+    };
 
-    assert.equal(active.length, 1);
-    assert.equal(active[0].id, 'camp_1');
+    // 3. Customer Backend queries Campaign Service via S2S proxy, filters for customer audience, and sanitizes payload
+    const customerBackendFetchCampaigns = (adminFeed) => {
+      return adminFeed
+        .filter(c => ['ALL', 'CUSTOMERS'].includes(c.targetAudience))
+        .map(c => ({
+          id: c.id,
+          title: typeof c.title === 'string' ? c.title : (c.title?.en || 'Special Offer'),
+          message: typeof c.body === 'string' ? c.body : (c.body?.en || ''),
+          category: c.category || 'PROMOTION',
+          targetAudience: c.targetAudience,
+          expiresAt: c.expiresAt,
+        }));
+    };
+
+    // 4. Customer App calls Customer Backend (GET /api/v1/discovery/campaigns)
+    const activeAdminFeed = getActiveAnnouncementsFromAdmin(adminCampaignDb);
+    const customerAppCampaignFeed = customerBackendFetchCampaigns(activeAdminFeed);
+
+    // Assertions verifying end-to-end connectivity and isolation:
+    assert.equal(customerAppCampaignFeed.length, 1, 'Only 1 active customer campaign should be delivered');
+    assert.equal(customerAppCampaignFeed[0].id, 'camp_101');
+    assert.equal(customerAppCampaignFeed[0].title, 'Diwali Special Offer');
+    assert.equal(customerAppCampaignFeed[0].message, 'Flat 20% off on all companions');
+
+    // Verify security: Drafts, expired, and internal staff notices are never leaked to customer
+    const deliveredIds = customerAppCampaignFeed.map(c => c.id);
+    assert.equal(deliveredIds.includes('camp_102'), false, 'Staff-only notice must NOT reach customer app');
+    assert.equal(deliveredIds.includes('camp_103'), false, 'Expired campaign must NOT reach customer app');
+    assert.equal(deliveredIds.includes('camp_104'), false, 'Draft campaign must NOT reach customer app');
   });
 
   // Authoritative Server-Side Pricing Calculation

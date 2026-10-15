@@ -14,6 +14,50 @@ export class DiscoveryService {
     return (process.env.COMPANION_API_URL || 'http://localhost:4001').replace(/\/+$/, '');
   }
 
+  private get adminApiUrl() {
+    return (process.env.ADMIN_API_URL || 'http://localhost:4000').replace(/\/+$/, '');
+  }
+
+  async getCampaigns() {
+    try {
+      const url = `${this.adminApiUrl}/api/marketing/announcements/active`;
+      const res = await fetch(url, {
+        headers: { Accept: 'application/json' },
+        signal: AbortSignal.timeout(4000),
+      });
+      if (!res.ok) {
+        this.logger.warn(`Admin Campaign Service responded with status ${res.status}`);
+        return { success: true, campaigns: [] };
+      }
+      const data = await res.json();
+      const list = Array.isArray(data) ? data : (data.data || []);
+      
+      const campaigns = list
+        .filter((c: any) => {
+          if (c.status !== 'PUBLISHED' && c.status !== 'SENT') return false;
+          if (c.targetAudience && !['ALL', 'CUSTOMERS'].includes(c.targetAudience)) return false;
+          if (c.expiresAt && new Date(c.expiresAt) < new Date()) return false;
+          return true;
+        })
+        .map((c: any) => ({
+          id: c.id,
+          title: typeof c.title === 'string' ? c.title : (c.title?.en || 'Special Promotion'),
+          message: typeof c.message === 'string' ? c.message : (c.message?.en || ''),
+          category: c.category || 'PROMOTION',
+          targetAudience: c.targetAudience || 'CUSTOMERS',
+          bannerUrl: c.bannerUrl || null,
+          actionUrl: c.actionUrl || null,
+          publishedAt: c.publishedAt,
+          expiresAt: c.expiresAt,
+        }));
+
+      return { success: true, campaigns };
+    } catch (err: any) {
+      this.logger.warn(`Failed to connect to Campaign Service at ${this.adminApiUrl}: ${err.message}`);
+      return { success: true, campaigns: [] };
+    }
+  }
+
   private async fetchCompanionsFromService(query?: Record<string, any>) {
     try {
       const url = new URL(`${this.companionApiUrl}/api/v1/companions/public`);
@@ -183,11 +227,14 @@ export class DiscoveryService {
       { id: 'shopping', title: 'Shopping & Lifestyle', icon: 'shopping', color: '#8B5CF6' },
     ];
 
-    const featuredCompanions = await this.getFeaturedCompanions();
+    const [featuredCompanions, campaignsRes] = await Promise.all([
+      this.getFeaturedCompanions(),
+      this.getCampaigns().catch(() => ({ success: true, campaigns: [] })),
+    ]);
 
     const durationMs = Date.now() - startTime;
     this.logger.log(
-      `[Customer Home API] GET /api/v1/discovery/home | customerId: ${customerId || 'guest'} | categories: ${categories.length} | featuredCompanions: ${featuredCompanions.length} | unreadNotifs: ${unreadNotificationCount} | upcomingBookings: ${upcomingBookingCount} | duration: ${durationMs}ms`
+      `[Customer Home API] GET /api/v1/discovery/home | customerId: ${customerId || 'guest'} | categories: ${categories.length} | featuredCompanions: ${featuredCompanions.length} | campaigns: ${campaignsRes.campaigns.length} | unreadNotifs: ${unreadNotificationCount} | upcomingBookings: ${upcomingBookingCount} | duration: ${durationMs}ms`
     );
 
     return {
@@ -196,6 +243,7 @@ export class DiscoveryService {
         profile: customerProfile,
         categories,
         featuredCompanions,
+        campaigns: campaignsRes.campaigns || [],
         quickAccess: {
           notificationCount: unreadNotificationCount,
           bookingCount: upcomingBookingCount,

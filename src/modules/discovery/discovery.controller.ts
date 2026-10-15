@@ -19,6 +19,12 @@ export class DiscoveryController {
     return this.discoveryService.getHomeData(customer?.id);
   }
 
+  @Get('campaigns')
+  @ApiOperation({ summary: 'Get active marketing campaigns and promotional announcements' })
+  getCampaigns() {
+    return this.discoveryService.getCampaigns();
+  }
+
   @Get('companions')
   @ApiOperation({ summary: 'List and filter companion profiles' })
   @ApiQuery({ name: 'category', required: false })
