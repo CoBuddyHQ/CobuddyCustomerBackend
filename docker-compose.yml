@@ -100,7 +100,8 @@ services:
       - "4002:4002"
 
     volumes:
-      # Live reload: mount src so changes reflect without rebuild
+      # Live reload: mount compiled dist and src so changes reflect without full image rebuild
+      - ./dist:/app/dist
       - ./src:/app/src
       - ./prisma:/app/prisma
       - ./prisma.config.ts:/app/prisma.config.ts

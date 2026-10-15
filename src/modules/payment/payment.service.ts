@@ -74,23 +74,31 @@ export class PaymentService {
     };
   }
 
-  async verifyPayment(customerId: string, body: {
-    razorpay_order_id: string;
-    razorpay_payment_id: string;
-    razorpay_signature: string;
-  }) {
-    const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = body;
+  async verifyPayment(customerId: string, body: any) {
+    const razorpay_order_id = body.razorpay_order_id || body.razorpayOrderId;
+    const razorpay_payment_id = body.razorpay_payment_id || body.razorpayPaymentId;
+    const razorpay_signature = body.razorpay_signature || body.razorpaySignature;
 
-    // 1. Verify HMAC SHA256 signature
+    if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
+      throw new BadRequestException('Missing required fields: razorpay_order_id, razorpay_payment_id, razorpay_signature');
+    }
+
+    // 1. Verify HMAC SHA256 signature using constant-time comparison
     const expectedSignature = crypto
       .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET ?? '')
       .update(`${razorpay_order_id}|${razorpay_payment_id}`)
       .digest('hex');
 
-    const isDev = process.env.NODE_ENV === 'development' || !process.env.NODE_ENV;
-    const isDevSignature = isDev && (razorpay_signature === 'dev_bypass_signature' || razorpay_signature.startsWith('dev_sig_'));
+    const isProd = process.env.NODE_ENV === 'production';
+    const isDevSignature = !isProd && (razorpay_signature === 'dev_bypass_signature' || razorpay_signature.startsWith('dev_sig_'));
 
-    if (!isDevSignature && expectedSignature !== razorpay_signature) {
+    const signatureMatches =
+      isDevSignature ||
+      (razorpay_signature &&
+        expectedSignature.length === razorpay_signature.length &&
+        crypto.timingSafeEqual(Buffer.from(expectedSignature), Buffer.from(razorpay_signature)));
+
+    if (!signatureMatches) {
       throw new BadRequestException('Payment verification failed: invalid signature');
     }
 
@@ -201,23 +209,31 @@ export class PaymentService {
     };
   }
 
-  async verifyWalletTopup(customerId: string, body: {
-    razorpay_order_id: string;
-    razorpay_payment_id: string;
-    razorpay_signature: string;
-  }) {
-    const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = body;
+  async verifyWalletTopup(customerId: string, body: any) {
+    const razorpay_order_id = body.razorpay_order_id || body.razorpayOrderId;
+    const razorpay_payment_id = body.razorpay_payment_id || body.razorpayPaymentId;
+    const razorpay_signature = body.razorpay_signature || body.razorpaySignature;
 
-    // 1. Verify HMAC SHA256 signature
+    if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
+      throw new BadRequestException('Missing required fields: razorpay_order_id, razorpay_payment_id, razorpay_signature');
+    }
+
+    // 1. Verify HMAC SHA256 signature using constant-time comparison
     const expectedSignature = crypto
       .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET ?? '')
       .update(`${razorpay_order_id}|${razorpay_payment_id}`)
       .digest('hex');
 
-    const isDev = process.env.NODE_ENV === 'development' || !process.env.NODE_ENV;
-    const isDevSignature = isDev && (razorpay_signature === 'dev_bypass_signature' || razorpay_signature.startsWith('dev_sig_'));
+    const isProd = process.env.NODE_ENV === 'production';
+    const isDevSignature = !isProd && (razorpay_signature === 'dev_bypass_signature' || razorpay_signature.startsWith('dev_sig_'));
 
-    if (!isDevSignature && expectedSignature !== razorpay_signature) {
+    const signatureMatches =
+      isDevSignature ||
+      (razorpay_signature &&
+        expectedSignature.length === razorpay_signature.length &&
+        crypto.timingSafeEqual(Buffer.from(expectedSignature), Buffer.from(razorpay_signature)));
+
+    if (!signatureMatches) {
       throw new BadRequestException('Payment verification failed: invalid signature');
     }
 
@@ -280,7 +296,12 @@ export class PaymentService {
       .update(rawBody)
       .digest('hex');
 
-    if (expectedSignature !== signature) {
+    const signatureMatches =
+      signature &&
+      expectedSignature.length === signature.length &&
+      crypto.timingSafeEqual(Buffer.from(expectedSignature), Buffer.from(signature));
+
+    if (!signatureMatches) {
       throw new BadRequestException('Invalid webhook signature');
     }
 

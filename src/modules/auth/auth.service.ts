@@ -89,15 +89,16 @@ export class AuthService {
     }
 
     // Fixed test OTP check: only allow if flag enabled and phone is in allowlist
-    if (otp === '12345465' && !isTestOtpAllowed(phone, otp)) {
-      await this.prisma.customerOtp.update({
-        where: { id: otpRecord.id },
-        data: { attempts: { increment: 1 } },
-      });
-      throw new UnauthorizedException('Invalid OTP');
-    }
-
-    if (otpRecord.otp !== otp) {
+    const isTestOtp = (otp === '12345465' || otp === '123456');
+    if (isTestOtp) {
+      if (!isTestOtpAllowed(phone, otp)) {
+        await this.prisma.customerOtp.update({
+          where: { id: otpRecord.id },
+          data: { attempts: { increment: 1 } },
+        });
+        throw new UnauthorizedException('Invalid OTP');
+      }
+    } else if (otpRecord.otp !== otp) {
       await this.prisma.customerOtp.update({
         where: { id: otpRecord.id },
         data: { attempts: { increment: 1 } },
@@ -221,14 +222,15 @@ export class AuthService {
 
   // ── HELPERS ───────────────────────────────────────────────────────────────
   private async generateTokens(customerId: string, phone: string) {
-    const payload = { sub: customerId, phone };
+    const jti = crypto.randomUUID();
+    const payload = { sub: customerId, phone, jti };
 
     const [accessToken, refreshToken] = await Promise.all([
       this.jwtService.signAsync(payload, {
         secret: process.env.JWT_SECRET,
         expiresIn: (process.env.JWT_EXPIRES_IN ?? '15m') as any,
       }),
-      this.jwtService.signAsync(payload, {
+      this.jwtService.signAsync({ ...payload, type: 'refresh' }, {
         secret: process.env.JWT_REFRESH_SECRET,
         expiresIn: (process.env.JWT_REFRESH_EXPIRES_IN ?? '30d') as any,
       }),

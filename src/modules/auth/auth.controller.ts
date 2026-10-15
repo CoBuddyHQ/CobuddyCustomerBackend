@@ -21,28 +21,28 @@ import type { Request } from 'express';
 export class AuthController {
   constructor(private readonly authService: AuthService) { }
 
-  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  @Throttle({ default: { limit: parseInt(process.env.AUTH_RATE_LIMIT ?? '15'), ttl: 60000 } })
   @Post('send-otp')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Send OTP to phone number (strict rate limit: 5/min)' })
+  @ApiOperation({ summary: 'Send OTP to phone number (strict rate limit)' })
   sendOtp(@Body() dto: SendOtpDto) {
     return this.authService.sendOtp(dto);
   }
 
-  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  @Throttle({ default: { limit: parseInt(process.env.AUTH_RATE_LIMIT ?? '15'), ttl: 60000 } })
   @Post('verify-otp')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Verify OTP and get JWT tokens (strict rate limit: 5/min)' })
+  @ApiOperation({ summary: 'Verify OTP and get JWT tokens (strict rate limit)' })
   verifyOtp(@Body() dto: VerifyOtpDto, @Req() req: Request) {
     const deviceInfo = req.headers['user-agent'];
     const ipAddress = req.ip;
     return this.authService.verifyOtp(dto, deviceInfo, ipAddress);
   }
 
-  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  @Throttle({ default: { limit: parseInt(process.env.AUTH_RATE_LIMIT ?? '15'), ttl: 60000 } })
   @Post('resend-otp')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Resend OTP (strict rate limit: 5/min)' })
+  @ApiOperation({ summary: 'Resend OTP (strict rate limit)' })
   resendOtp(@Body() body: { phone: string }) {
     return this.authService.resendOtp(body.phone);
   }

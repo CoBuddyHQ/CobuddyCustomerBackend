@@ -15,6 +15,9 @@ export function normalizePhone(phone: string): string {
 }
 
 export function isTestPhoneAllowlisted(phone: string): boolean {
+  if (process.env.NODE_ENV === 'production') {
+    return false; // Absolute defense-in-depth: impossible to activate in production
+  }
   const isEnabled = process.env.OTP_TEST_BYPASS_ENABLED === 'true';
   if (!isEnabled) {
     return false;
@@ -38,7 +41,7 @@ export function isTestPhoneAllowlisted(phone: string): boolean {
 }
 
 export function isTestOtpAllowed(phone: string, otp: string): boolean {
-  if (otp !== '12345465') {
+  if (otp !== '12345465' && otp !== '123456') {
     return false;
   }
   return isTestPhoneAllowlisted(phone);

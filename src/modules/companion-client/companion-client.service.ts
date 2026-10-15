@@ -77,7 +77,8 @@ export class CompanionClientService {
         return { companions: [], total: 0, page: 1, limit: 20, totalPages: 0 };
       }
 
-      return await res.json();
+      const json = await res.json();
+      return json.data !== undefined ? json.data : json;
     } catch (err: any) {
       this.logger.warn(
         `[CompanionClient] [${correlationId}] Connection/timeout error fetching companions: ${err.message}`
@@ -112,7 +113,9 @@ export class CompanionClientService {
         throw new Error(`Companion service responded with status ${res.status}`);
       }
 
-      return await res.json();
+      const json = await res.json();
+      return json.data !== undefined ? json.data : json;
+
     } catch (err: any) {
       if (err instanceof NotFoundException) throw err;
       this.logger.warn(
