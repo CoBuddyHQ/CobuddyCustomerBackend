@@ -21,8 +21,12 @@ describe('CoBuddy Customer API (e2e)', () => {
     app.useGlobalFilters(new HttpExceptionFilter());
     app.useGlobalInterceptors(new ResponseInterceptor());
 
+    process.env.OTP_TEST_BYPASS_ENABLED = 'true';
+    process.env.OTP_TEST_ALLOWED_PHONES = '919876543210,9876543210';
+
     await app.init();
   });
+
 
   afterAll(async () => {
     await app.close();
@@ -92,4 +96,30 @@ describe('CoBuddy Customer API (e2e)', () => {
         expect(res.body.data).toHaveProperty('message');
       });
   });
+
+  describe('S2S Internal Bookings API', () => {
+    it('rejects internal status update when x-internal-token header is missing', () => {
+      return request(app.getHttpServer())
+        .post('/api/v1/internal/bookings/test-id/status-update')
+        .send({ status: 'accepted', passCode: 'CO-123' })
+        .expect(401);
+    });
+
+    it('rejects internal status update when x-internal-token header is invalid', () => {
+      return request(app.getHttpServer())
+        .post('/api/v1/internal/bookings/test-id/status-update')
+        .set('x-internal-token', 'wrong-token')
+        .send({ status: 'accepted', passCode: 'CO-123' })
+        .expect(401);
+    });
+
+    it('returns 404 for non-existent booking with valid token', () => {
+      return request(app.getHttpServer())
+        .post('/api/v1/internal/bookings/non-existent-booking-id/status-update')
+        .set('x-internal-token', process.env.INTERNAL_SERVICE_TOKEN || 'cobuddy-internal-service-s2s-token-2026')
+        .send({ status: 'accepted', passCode: 'CO-123' })
+        .expect(404);
+    });
+  });
 });
+

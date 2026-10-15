@@ -13,6 +13,7 @@ import {
   ModifyBookingDto,
   CounterOfferResponseDto,
 } from './dto/booking.dto';
+import { InternalStatusUpdateDto } from './dto/internal-status-update.dto';
 
 const PLATFORM_FEE_PERCENT = 0.15; // 15% matching adminValues.commission.platformFeePercentage
 const TAX_PERCENT = 0.18; // 18% GST matching adminValues.commission.taxPercentage
@@ -148,6 +149,11 @@ export class BookingService {
     this.logger.log(
       `[BOOKING REQUEST CREATED] Booking ID: ${booking.id} | Customer: ${customerId} | Companion: ${dto.companionName || dto.companionId} | Activity: ${activityTitle} | Venue: ${vName} | Date: ${startDate.toISOString().split('T')[0]} ${timeStr} | Duration: ${durationHours}h | BaseRate: ₹${baseRate}/hr | PlatformFee: ₹${platformFee} | Tax: ₹${taxAmount} | TotalAmount: ₹${totalAmount}`
     );
+
+    // Outbound S2S notification to Companion Backend
+    this.notifyCompanionBackendOfNewBooking(booking, customerId).catch((err) => {
+      this.logger.warn(`Failed to dispatch booking to companion backend: ${err.message}`);
+    });
 
     return this.buildBookingResponse(booking);
   }
@@ -450,4 +456,297 @@ export class BookingService {
       createdAt: booking.createdAt,
     };
   }
+
+  // ── S2S INTERNAL: HANDLE STATUS UPDATE FROM COMPANION BACKEND ─────────────
+  async handleInternalStatusUpdate(bookingId: string, dto: InternalStatusUpdateDto) {
+    const booking = await this.prisma.customerBooking.findUnique({
+      where: { id: bookingId },
+      include: { sessions: true },
+    });
+    if (!booking) {
+      throw new NotFoundException(`Booking with ID ${bookingId} not found`);
+    }
+
+    const status = dto.status.toLowerCase();
+    if (status === 'accepted') {
+      await this.prisma.$transaction(async (tx) => {
+        await tx.customerBooking.update({
+          where: { id: bookingId },
+          data: {
+            status: 'accepted',
+            acceptedAt: new Date(),
+          },
+        });
+
+        await tx.customerSession.upsert({
+          where: {
+            bookingId_customerId: {
+              bookingId,
+              customerId: booking.customerId,
+            },
+          },
+          create: {
+            bookingId,
+            customerId: booking.customerId,
+            companionId: booking.companionId,
+            status: 'upcoming',
+            passCode: dto.passCode,
+          },
+          update: {
+            status: 'upcoming',
+            passCode: dto.passCode,
+          },
+        });
+
+        await tx.customerNotification.create({
+          data: {
+            customerId: booking.customerId,
+            title: 'Booking Accepted! ✓',
+            description: `Your booking request has been accepted by ${booking.companionName || 'your companion'}. Session pass code: ${dto.passCode || 'N/A'}`,
+            category: 'booking',
+            icon: 'calendar-check',
+            iconColor: '#27AE60',
+            route: 'ActiveSessionScreen',
+            stack: 'BookingsTab',
+          },
+        });
+      });
+      this.logger.log(`[S2S] Booking ${bookingId} updated to accepted with pass code ${dto.passCode}`);
+    } else if (status === 'declined') {
+      await this.prisma.$transaction(async (tx) => {
+        await tx.customerBooking.update({
+          where: { id: bookingId },
+          data: {
+            status: 'declined',
+            declineReason: dto.reason || 'Companion was unavailable',
+          },
+        });
+
+        await tx.customerNotification.create({
+          data: {
+            customerId: booking.customerId,
+            title: 'Booking Request Declined',
+            description: `${booking.companionName || 'The companion'} was unable to accept your booking request.${dto.reason ? ` Reason: ${dto.reason}` : ''}`,
+            category: 'booking',
+            icon: 'calendar-remove',
+            iconColor: '#E74C3C',
+            route: 'BookingDetailScreen',
+            stack: 'BookingsTab',
+          },
+        });
+      });
+      this.logger.log(`[S2S] Booking ${bookingId} updated to declined (reason: ${dto.reason})`);
+    } else if (status === 'counter_proposed') {
+      const counterStart = dto.newStart ? new Date(dto.newStart) : undefined;
+      await this.prisma.$transaction(async (tx) => {
+        await tx.customerBooking.update({
+          where: { id: bookingId },
+          data: {
+            status: 'counter_proposed',
+            counterDate: counterStart,
+            counterTime: counterStart ? counterStart.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : undefined,
+            counterMessage: 'Companion proposed an alternative time for this session.',
+          },
+        });
+
+        await tx.customerNotification.create({
+          data: {
+            customerId: booking.customerId,
+            title: 'New Counter Offer Received',
+            description: `${booking.companionName || 'Your companion'} proposed a new time for your booking. Please review.`,
+            category: 'booking',
+            icon: 'clock-edit',
+            iconColor: '#F39C12',
+            route: 'BookingDetailScreen',
+            stack: 'BookingsTab',
+          },
+        });
+      });
+      this.logger.log(`[S2S] Booking ${bookingId} updated to counter_proposed`);
+    } else if (status === 'in_progress' || status === 'active') {
+      await this.prisma.$transaction(async (tx) => {
+        await tx.customerBooking.update({
+          where: { id: bookingId },
+          data: { status: 'in_progress' },
+        });
+
+        await tx.customerSession.updateMany({
+          where: { bookingId },
+          data: {
+            status: 'active',
+            checkInTime: new Date(),
+          },
+        });
+
+        await tx.customerNotification.create({
+          data: {
+            customerId: booking.customerId,
+            title: 'Session Started! 🎉',
+            description: `Your session with ${booking.companionName || 'your companion'} is now in progress. Enjoy!`,
+            category: 'session',
+            icon: 'account-clock',
+            iconColor: '#3498DB',
+            route: 'ActiveSessionScreen',
+            stack: 'BookingsTab',
+          },
+        });
+      });
+      this.logger.log(`[S2S] Booking ${bookingId} transitioned to in_progress`);
+    } else if (status === 'completed') {
+      await this.prisma.$transaction(async (tx) => {
+        await tx.customerBooking.update({
+          where: { id: bookingId },
+          data: { status: 'completed', completedAt: new Date() },
+        });
+
+        await tx.customerSession.updateMany({
+          where: { bookingId },
+          data: {
+            status: 'completed',
+            checkOutTime: new Date(),
+          },
+        });
+
+        await tx.customerNotification.create({
+          data: {
+            customerId: booking.customerId,
+            title: 'Session Completed ✓',
+            description: `Your session with ${booking.companionName || 'your companion'} has concluded. Please leave a review!`,
+            category: 'session',
+            icon: 'star',
+            iconColor: '#F39C12',
+            route: 'SessionFeedbackScreen',
+            stack: 'BookingsTab',
+          },
+        });
+      });
+      this.logger.log(`[S2S] Booking ${bookingId} transitioned to completed`);
+    } else if (status === 'cancelled') {
+      await this.prisma.$transaction(async (tx) => {
+        await tx.customerBooking.update({
+          where: { id: bookingId },
+          data: {
+            status: 'cancelled',
+            cancelReason: dto.reason || 'Cancelled by companion',
+            cancelledAt: new Date(),
+          },
+        });
+
+        await tx.customerSession.updateMany({
+          where: { bookingId },
+          data: { status: 'cancelled' },
+        });
+
+        await tx.customerNotification.create({
+          data: {
+            customerId: booking.customerId,
+            title: 'Booking Cancelled',
+            description: `Your booking was cancelled by ${booking.companionName || 'the companion'}.${dto.reason ? ` Reason: ${dto.reason}` : ''}`,
+            category: 'booking',
+            icon: 'calendar-remove',
+            iconColor: '#E74C3C',
+            route: 'BookingDetailScreen',
+            stack: 'BookingsTab',
+          },
+        });
+      });
+      this.logger.log(`[S2S] Booking ${bookingId} transitioned to cancelled`);
+    }
+
+
+    const updated = await this.prisma.customerBooking.findUnique({
+      where: { id: bookingId },
+      include: { sessions: true },
+    });
+
+    return {
+      success: true,
+      message: `Booking status updated to ${status}`,
+      booking: this.buildBookingResponse(updated),
+    };
+  }
+
+  // ── S2S HELPER: DISPATCH BOOKING TO COMPANION BACKEND ─────────────────────
+  private async notifyCompanionBackendOfNewBooking(booking: any, customerId: string) {
+    const customer = await this.prisma.customer.findUnique({
+      where: { id: customerId },
+      select: { name: true, kycStatus: true },
+    });
+    let initials = 'C.U.';
+    if (customer?.name) {
+      const parts = customer.name.trim().split(/\s+/);
+      if (parts.length >= 2) {
+        initials = `${parts[0][0].toUpperCase()}.${parts[1][0].toUpperCase()}.`;
+      } else if (parts.length === 1 && parts[0].length > 0) {
+        initials = `${parts[0][0].toUpperCase()}.`;
+      }
+    }
+    const isVerified = customer?.kycStatus === 'verified';
+    const trustScore = isVerified ? 90 : 75;
+
+    const companionBackendUrl = process.env.COMPANION_API_URL || 'http://localhost:4001';
+    const internalToken = process.env.INTERNAL_SERVICE_TOKEN || 'cobuddy-internal-service-s2s-token-2026';
+
+    const startDate = new Date(booking.date);
+    const durationMs = (booking.durationHours || 1) * 60 * 60 * 1000;
+    const endDate = new Date(startDate.getTime() + durationMs);
+
+    const payload = {
+      bookingId: booking.id,
+      companionId: booking.companionId,
+      customerId,
+      customerInitials: initials,
+      customerTrustScore: trustScore,
+      customerVerified: isVerified,
+      category: this.mapActivityToCategory(booking.activityName),
+      venueName: booking.venueName,
+      venueArea: booking.venueArea || '',
+      venueCity: booking.venueCity || '',
+      venueType: booking.venueType || 'PUBLIC',
+      venueMeetingPoint: booking.meetingPoint || '',
+      venueLandmark: booking.landmark || '',
+      proposedStart: startDate.toISOString(),
+      proposedEnd: endDate.toISOString(),
+      durationMinutes: Math.round((booking.durationHours || 1) * 60),
+      language: 'Hindi',
+      estimatedEarning: booking.baseTotal,
+      customerNote: booking.specialInstructions || undefined,
+      expiresAt: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+    };
+
+    try {
+      const res = await fetch(`${companionBackendUrl}/api/v1/internal/companion/requests`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-internal-token': internalToken,
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        this.logger.warn(`Failed to dispatch booking ${booking.id} to companion backend: ${res.status} ${res.statusText}`);
+      } else {
+        this.logger.log(`Successfully dispatched booking ${booking.id} to companion backend at ${companionBackendUrl}`);
+      }
+    } catch (err: any) {
+      this.logger.warn(`Error connecting to companion backend at ${companionBackendUrl}: ${err.message}`);
+    }
+  }
+
+  private mapActivityToCategory(activityName?: string): string {
+    if (!activityName) return 'cafe_conversation';
+    const norm = activityName.toLowerCase();
+    if (norm.includes('walk') || norm.includes('explore')) return 'city_walk';
+    if (norm.includes('art') || norm.includes('museum') || norm.includes('gallery')) return 'art_culture';
+    if (norm.includes('food') || norm.includes('dine') || norm.includes('dinner') || norm.includes('lunch')) return 'food_experience';
+    if (norm.includes('shop')) return 'shopping_assistance';
+    if (norm.includes('event') || norm.includes('concert') || norm.includes('festival')) return 'events';
+    if (norm.includes('business') || norm.includes('network')) return 'business_networking';
+    if (norm.includes('book')) return 'bookstore';
+    if (norm.includes('wellness') || norm.includes('fitness') || norm.includes('yoga')) return 'wellness_walk';
+    if (norm.includes('movie') || norm.includes('cinema')) return 'movies';
+    return 'cafe_conversation';
+  }
 }
+
