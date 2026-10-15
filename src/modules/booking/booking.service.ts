@@ -3,9 +3,12 @@ import {
   NotFoundException,
   BadRequestException,
   ForbiddenException,
+  ConflictException,
+  Optional,
   Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { CompanionClientService } from '../companion-client/companion-client.service';
 import {
   CreateBookingDto,
   CancelBookingDto,
@@ -39,21 +42,39 @@ const ACTIVITY_MULTIPLIERS: Record<string, number> = {
 export class BookingService {
   private readonly logger = new Logger(BookingService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    @Optional() private companionClient?: CompanionClientService,
+  ) {}
 
   // ── CREATE BOOKING REQUEST ────────────────────────────────────────────────
   async createBooking(customerId: string, dto: CreateBookingDto) {
     const actId = dto.activityId || 'INT-1';
     const multiplier = ACTIVITY_MULTIPLIERS[actId] || 1.0;
     
-    // Server-side authoritative pricing — never allow client-manipulated sub-standard or negative rates
-    const MIN_BASE_HOURLY_RATE = 300;
-    const STANDARD_DEFAULT_RATE = 500;
-    const clientRate = Number(dto.baseRate);
-    const validClientRate = (!isNaN(clientRate) && clientRate >= MIN_BASE_HOURLY_RATE)
-      ? clientRate
-      : STANDARD_DEFAULT_RATE;
-    const baseRate = validClientRate * multiplier;
+    // Server-side authoritative pricing — fetch companion's real rate from companion backend, ignoring client-tampered baseRate
+    let companionHourlyRate = 500;
+    if (this.companionClient) {
+      try {
+        const comp = await this.companionClient.getCompanionById(dto.companionId);
+        if (comp && comp.hourlyRate) {
+          companionHourlyRate = Number(comp.hourlyRate);
+        }
+      } catch (err: any) {
+        this.logger.warn(`Could not fetch authoritative hourlyRate for companion ${dto.companionId}: ${err.message}`);
+        const clientRate = Number(dto.baseRate);
+        if (!isNaN(clientRate) && clientRate >= 300) {
+          companionHourlyRate = clientRate;
+        }
+      }
+    } else {
+      const clientRate = Number(dto.baseRate);
+      if (!isNaN(clientRate) && clientRate >= 300) {
+        companionHourlyRate = clientRate;
+      }
+    }
+
+    const baseRate = companionHourlyRate * multiplier;
     const durationHours = Math.max(Number(dto.durationHours) || 1, 1);
     const baseTotal = Math.round(baseRate * durationHours);
     const platformFee = Math.round(baseTotal * PLATFORM_FEE_PERCENT);
@@ -81,6 +102,22 @@ export class BookingService {
 
     const timeStr = dto.time || startDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const activityTitle = dto.activityName || dto.activity || 'Activity';
+
+    // Double-booking conflict check — return 409 Conflict if companion already booked for overlapping active session
+    const conflictingActiveSession = await this.prisma.customerBooking.findFirst({
+      where: {
+        companionId: dto.companionId,
+        date: startDate,
+        time: timeStr,
+        status: { in: ['accepted', 'confirmed', 'in_progress'] },
+      },
+    });
+
+    if (conflictingActiveSession) {
+      throw new ConflictException(
+        'Companion already has a confirmed session during this time window (409 Conflict)'
+      );
+    }
 
     // Idempotency / Double-tap check — if duplicate pending/confirmed booking exists, return it
     const existingDuplicate = await this.prisma.customerBooking.findFirst({
@@ -468,6 +505,7 @@ export class BookingService {
     }
 
     const status = dto.status.toLowerCase();
+    const effectivePassCode = dto.sessionPassCode || dto.passCode;
     if (status === 'accepted') {
       await this.prisma.$transaction(async (tx) => {
         await tx.customerBooking.update({
@@ -490,11 +528,11 @@ export class BookingService {
             customerId: booking.customerId,
             companionId: booking.companionId,
             status: 'upcoming',
-            passCode: dto.passCode,
+            passCode: effectivePassCode,
           },
           update: {
             status: 'upcoming',
-            passCode: dto.passCode,
+            passCode: effectivePassCode,
           },
         });
 
@@ -502,7 +540,7 @@ export class BookingService {
           data: {
             customerId: booking.customerId,
             title: 'Booking Accepted! ✓',
-            description: `Your booking request has been accepted by ${booking.companionName || 'your companion'}. Session pass code: ${dto.passCode || 'N/A'}`,
+            description: `Your booking request has been accepted by ${booking.companionName || 'your companion'}. Session pass code: ${effectivePassCode || 'N/A'}`,
             category: 'booking',
             icon: 'calendar-check',
             iconColor: '#27AE60',
@@ -511,7 +549,7 @@ export class BookingService {
           },
         });
       });
-      this.logger.log(`[S2S] Booking ${bookingId} updated to accepted with pass code ${dto.passCode}`);
+      this.logger.log(`[S2S] Booking ${bookingId} updated to accepted with pass code ${effectivePassCode}`);
     } else if (status === 'declined') {
       await this.prisma.$transaction(async (tx) => {
         await tx.customerBooking.update({
@@ -713,6 +751,17 @@ export class BookingService {
       customerNote: booking.specialInstructions || undefined,
       expiresAt: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
     };
+
+    if (this.companionClient) {
+      try {
+        await this.companionClient.createBookingRequest(payload);
+        this.logger.log(`Successfully dispatched booking ${booking.id} to companion backend via CompanionClientService`);
+        return;
+      } catch (err: any) {
+        this.logger.warn(`Failed to dispatch booking ${booking.id} to companion backend: ${err.message}`);
+        return;
+      }
+    }
 
     try {
       const res = await fetch(`${companionBackendUrl}/api/v1/internal/companion/requests`, {

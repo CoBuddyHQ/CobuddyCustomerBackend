@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CompanionFilterDto } from './dto/discovery.dto';
+import { CompanionClientService } from '../companion-client/companion-client.service';
 
 export { CompanionFilterDto };
 
@@ -8,96 +9,21 @@ export { CompanionFilterDto };
 export class DiscoveryService {
   private readonly logger = new Logger(DiscoveryService.name);
 
-  constructor(private prisma: PrismaService) {}
-
-  private get companionApiUrl() {
-    return (process.env.COMPANION_API_URL || 'http://localhost:4001').replace(/\/+$/, '');
-  }
-
-  private get adminApiUrl() {
-    return (process.env.ADMIN_API_URL || 'http://localhost:4000').replace(/\/+$/, '');
-  }
+  constructor(
+    private prisma: PrismaService,
+    private companionClient: CompanionClientService,
+  ) {}
 
   async getCampaigns() {
-    try {
-      const url = `${this.adminApiUrl}/api/marketing/announcements/active`;
-      const res = await fetch(url, {
-        headers: { Accept: 'application/json' },
-        signal: AbortSignal.timeout(4000),
-      });
-      if (!res.ok) {
-        this.logger.warn(`Admin Campaign Service responded with status ${res.status}`);
-        return { success: true, campaigns: [] };
-      }
-      const data = await res.json();
-      const list = Array.isArray(data) ? data : (data.data || []);
-      
-      const campaigns = list
-        .filter((c: any) => {
-          if (c.status !== 'PUBLISHED' && c.status !== 'SENT') return false;
-          if (c.targetAudience && !['ALL', 'CUSTOMERS'].includes(c.targetAudience)) return false;
-          if (c.expiresAt && new Date(c.expiresAt) < new Date()) return false;
-          return true;
-        })
-        .map((c: any) => ({
-          id: c.id,
-          title: typeof c.title === 'string' ? c.title : (c.title?.en || 'Special Promotion'),
-          message: typeof c.message === 'string' ? c.message : (c.message?.en || ''),
-          category: c.category || 'PROMOTION',
-          targetAudience: c.targetAudience || 'CUSTOMERS',
-          bannerUrl: c.bannerUrl || null,
-          actionUrl: c.actionUrl || null,
-          publishedAt: c.publishedAt,
-          expiresAt: c.expiresAt,
-        }));
-
-      return { success: true, campaigns };
-    } catch (err: any) {
-      this.logger.warn(`Failed to connect to Campaign Service at ${this.adminApiUrl}: ${err.message}`);
-      return { success: true, campaigns: [] };
-    }
+    return this.companionClient.getCampaigns();
   }
 
   private async fetchCompanionsFromService(query?: Record<string, any>) {
-    try {
-      const url = new URL(`${this.companionApiUrl}/api/v1/companions/public`);
-      if (query) {
-        Object.entries(query).forEach(([k, v]) => {
-          if (v !== undefined && v !== null && v !== '') {
-            url.searchParams.append(k, String(v));
-          }
-        });
-      }
-      const res = await fetch(url.toString(), {
-        headers: { Accept: 'application/json' },
-        signal: AbortSignal.timeout(4000),
-      });
-      if (!res.ok) {
-        this.logger.warn(`Companion service responded with status ${res.status}`);
-        return { companions: [], total: 0, page: 1, limit: 20, totalPages: 0 };
-      }
-      return await res.json();
-    } catch (err: any) {
-      this.logger.warn(`Failed to connect to Companion Backend (${this.companionApiUrl}): ${err.message}`);
-      return { companions: [], total: 0, page: 1, limit: 20, totalPages: 0 };
-    }
+    return this.companionClient.getCompanions(query);
   }
 
   private async fetchCompanionDetailFromService(companionId: string) {
-    try {
-      const res = await fetch(`${this.companionApiUrl}/api/v1/companions/public/${encodeURIComponent(companionId)}`, {
-        headers: { Accept: 'application/json' },
-        signal: AbortSignal.timeout(4000),
-      });
-      if (res.status === 404 || !res.ok) {
-        throw new NotFoundException('Companion profile not found');
-      }
-      return await res.json();
-    } catch (err: any) {
-      if (err instanceof NotFoundException) throw err;
-      this.logger.warn(`Error fetching companion ${companionId}: ${err.message}`);
-      throw new NotFoundException('Companion profile not found');
-    }
+    return this.companionClient.getCompanionById(companionId);
   }
 
   async getCompanions(filter: CompanionFilterDto) {

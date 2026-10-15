@@ -23,6 +23,7 @@ import { AccountModule } from './modules/account/account.module';
 import { ChatModule } from './modules/chat/chat.module';
 import { UploadsModule } from './modules/uploads/uploads.module';
 import { SystemModule } from './modules/system/system.module';
+import { CompanionClientModule } from './modules/companion-client/companion-client.module';
 import { AppController } from './app.controller';
 
 @Module({
@@ -51,6 +52,7 @@ import { AppController } from './app.controller';
     ChatModule,
     UploadsModule,
     SystemModule,
+    CompanionClientModule,
   ],
   controllers: [AppController],
   providers: [

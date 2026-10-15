@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsOptional } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, IsNumber } from 'class-validator';
 
 export class InternalStatusUpdateDto {
   @IsString()
@@ -7,7 +7,19 @@ export class InternalStatusUpdateDto {
 
   @IsOptional()
   @IsString()
+  customerBookingId?: string;
+
+  @IsOptional()
+  @IsString()
+  bookingId?: string;
+
+  @IsOptional()
+  @IsString()
   passCode?: string;
+
+  @IsOptional()
+  @IsString()
+  sessionPassCode?: string;
 
   @IsOptional()
   @IsString()
@@ -20,6 +32,10 @@ export class InternalStatusUpdateDto {
   @IsOptional()
   @IsString()
   sessionId?: string;
+
+  @IsOptional()
+  @IsNumber()
+  companionEarnings?: number;
 
   @IsOptional()
   @IsString()
