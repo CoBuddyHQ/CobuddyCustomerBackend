@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 
 @Injectable()
@@ -63,12 +68,12 @@ export class WalletService {
 
   async getPaymentMethods(customerId: string) {
     return this.prisma.customerPaymentMethod.findMany({
-      where: { customerId },
+      where: { customerId, isVerified: true },
       orderBy: [{ isDefault: 'desc' }, { createdAt: 'desc' }],
     });
   }
 
-  async addPaymentMethod(customerId: string, data: {
+  async addPaymentMethod(_customerId: string, _data: {
     type: string;
     title: string;
     sub?: string;
@@ -76,24 +81,9 @@ export class WalletService {
     maskedNumber?: string;
     isDefault?: boolean;
   }) {
-    if (data.isDefault) {
-      await this.prisma.customerPaymentMethod.updateMany({
-        where: { customerId },
-        data: { isDefault: false },
-      });
-    }
-
-    return this.prisma.customerPaymentMethod.create({
-      data: {
-        customerId,
-        type: data.type as any,
-        title: data.title,
-        sub: data.sub,
-        icon: data.icon,
-        maskedNumber: data.maskedNumber,
-        isDefault: data.isDefault ?? false,
-      },
-    });
+    throw new ServiceUnavailableException(
+      'Secure payment-method tokenization is not configured. No payment method was stored.',
+    );
   }
 
   async deletePaymentMethod(customerId: string, methodId: string) {
@@ -106,36 +96,35 @@ export class WalletService {
   }
 
   async setDefaultPaymentMethod(customerId: string, methodId: string) {
-    await this.prisma.customerPaymentMethod.updateMany({
-      where: { customerId },
-      data: { isDefault: false },
-    });
-    return this.prisma.customerPaymentMethod.update({
-      where: { id: methodId },
-      data: { isDefault: true },
+    return this.prisma.$transaction(async (tx) => {
+      const method = await tx.customerPaymentMethod.findFirst({
+        where: { id: methodId, customerId, isVerified: true },
+        select: { id: true },
+      });
+      if (!method) throw new NotFoundException('Verified payment method not found');
+      await tx.customerPaymentMethod.updateMany({
+        where: { customerId },
+        data: { isDefault: false },
+      });
+      await tx.customerPaymentMethod.updateMany({
+        where: { id: method.id, customerId, isVerified: true },
+        data: { isDefault: true },
+      });
+      return tx.customerPaymentMethod.findFirst({ where: { id: method.id, customerId } });
     });
   }
 
   async getBankAccounts(customerId: string) {
     return this.prisma.customerPaymentMethod.findMany({
-      where: { customerId, type: 'bank_account' },
+      where: { customerId, type: 'bank_account', isVerified: true },
       orderBy: { createdAt: 'desc' },
     });
   }
 
-  async addBankAccount(customerId: string, data: { accName: string; accNumber: string; ifsc: string }) {
-    const last4 = data.accNumber.slice(-4);
-    return this.prisma.customerPaymentMethod.create({
-      data: {
-        customerId,
-        type: 'bank_account',
-        title: 'Verified Bank Account',
-        sub: `Account ending in ${last4}`,
-        icon: 'bank',
-        maskedNumber: `•••• ${last4}`,
-        isDefault: false,
-      },
-    });
+  async addBankAccount(_customerId: string, _data: { accName: string; accNumber: string; ifsc: string }) {
+    throw new ServiceUnavailableException(
+      'Bank-account verification is not configured. No bank account was saved.',
+    );
   }
 
   async deleteBankAccount(customerId: string, id: string) {
@@ -149,7 +138,7 @@ export class WalletService {
 
   async getWithdrawalMethods(customerId: string) {
     const methods = await this.prisma.customerPaymentMethod.findMany({
-      where: { customerId, type: { in: ['bank_account', 'upi'] } },
+      where: { customerId, isVerified: true, type: { in: ['bank_account', 'upi'] } },
       orderBy: { createdAt: 'desc' },
     });
     return methods.map((m) => ({
@@ -162,42 +151,11 @@ export class WalletService {
     }));
   }
 
-  async withdrawMoney(customerId: string, data: { amount: number; methodId?: string; type?: string }) {
-    const wallet = await this.prisma.customerWallet.findUnique({ where: { customerId } });
-    if (!wallet) throw new NotFoundException('Wallet not found');
-
-    if (data.amount < 1000) {
-      throw new BadRequestException('Minimum withdrawal amount is ₹1,000 (matching admin configuration)');
-    }
-    if (data.amount > wallet.balance) {
-      throw new BadRequestException('Insufficient wallet balance');
-    }
-
-    // Deduct from wallet and create transaction
-    const [updatedWallet, tx] = await this.prisma.$transaction([
-      this.prisma.customerWallet.update({
-        where: { customerId },
-        data: { balance: { decrement: data.amount } },
-      }),
-      this.prisma.customerTransaction.create({
-        data: {
-          customerId,
-          type: 'withdrawal',
-          amount: data.amount,
-          description: `Withdrawal of ₹${data.amount} to payout account`,
-          status: 'completed',
-        },
-      }),
-    ]);
-
-    return {
-      success: true,
-      message: `₹${data.amount} withdrawal processed successfully`,
-      newBalance: updatedWallet.balance,
-      transactionId: tx.id,
-    };
+  async withdrawMoney(_customerId: string, _data: { amount: number; methodId?: string; type?: string }) {
+    throw new ServiceUnavailableException(
+      'Payout processing is not configured. No funds were debited or transfer initiated.',
+    );
   }
-
   private buildTransactionResponse(tx: any) {
     return {
       id: tx.id,

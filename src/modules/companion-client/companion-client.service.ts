@@ -3,6 +3,7 @@ import {
   Logger,
   NotFoundException,
   ConflictException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import * as crypto from 'crypto';
 
@@ -19,19 +20,18 @@ export class CompanionClientService {
   }
 
   private get internalSecret(): string {
-    return (
-      process.env.INTERNAL_SERVICE_SECRET ||
-      process.env.INTERNAL_SERVICE_TOKEN ||
-      'cobuddy-internal-service-s2s-token-2026'
-    );
+    return process.env.INTERNAL_SERVICE_SECRET || '';
   }
 
   private getHeaders(correlationId?: string): Record<string, string> {
+    if (!this.internalSecret) {
+      throw new ServiceUnavailableException('Inter-service authentication is not configured.');
+    }
+
     return {
       'Accept': 'application/json',
       'Content-Type': 'application/json',
       'X-Internal-Service-Key': this.internalSecret,
-      'x-internal-token': this.internalSecret,
       'X-Correlation-Id': correlationId || crypto.randomUUID(),
     };
   }
@@ -54,27 +54,8 @@ export class CompanionClientService {
         signal: AbortSignal.timeout(5000),
       });
 
-      if (res.status === 404) {
-        // Fallback to public route if internal endpoint not registered
-        const fallbackUrl = new URL(`${this.companionApiUrl}/api/v1/companions/public`);
-        if (filter) {
-          Object.entries(filter).forEach(([k, v]) => {
-            if (v !== undefined && v !== null && v !== '') {
-              fallbackUrl.searchParams.append(k, String(v));
-            }
-          });
-        }
-        res = await fetch(fallbackUrl.toString(), {
-          headers: this.getHeaders(correlationId),
-          signal: AbortSignal.timeout(5000),
-        });
-      }
-
       if (!res.ok) {
-        this.logger.warn(
-          `[CompanionClient] [${correlationId}] Failed to fetch companions: status ${res.status}`
-        );
-        return { companions: [], total: 0, page: 1, limit: 20, totalPages: 0 };
+        throw new ServiceUnavailableException(`Companion service responded with status ${res.status}.`);
       }
 
       const json = await res.json();
@@ -83,7 +64,8 @@ export class CompanionClientService {
       this.logger.warn(
         `[CompanionClient] [${correlationId}] Connection/timeout error fetching companions: ${err.message}`
       );
-      return { companions: [], total: 0, page: 1, limit: 20, totalPages: 0 };
+      if (err instanceof ServiceUnavailableException) throw err;
+      throw new ServiceUnavailableException('Companion discovery is unavailable.');
     }
   }
 
@@ -91,20 +73,12 @@ export class CompanionClientService {
   async getCompanionById(companionId: string) {
     const correlationId = crypto.randomUUID();
     const primaryUrl = `${this.companionApiUrl}/api/v1/internal/companions/${encodeURIComponent(companionId)}`;
-    const fallbackUrl = `${this.companionApiUrl}/api/v1/companions/public/${encodeURIComponent(companionId)}`;
 
     try {
-      let res = await fetch(primaryUrl, {
+      const res = await fetch(primaryUrl, {
         headers: this.getHeaders(correlationId),
         signal: AbortSignal.timeout(5000),
       });
-
-      if (res.status === 404) {
-        res = await fetch(fallbackUrl, {
-          headers: this.getHeaders(correlationId),
-          signal: AbortSignal.timeout(5000),
-        });
-      }
 
       if (res.status === 404) {
         throw new NotFoundException(`Companion ${companionId} not found`);
@@ -117,97 +91,96 @@ export class CompanionClientService {
       return json.data !== undefined ? json.data : json;
 
     } catch (err: any) {
-      if (err instanceof NotFoundException) throw err;
+      if (err instanceof NotFoundException || err instanceof ServiceUnavailableException) throw err;
       this.logger.warn(
         `[CompanionClient] [${correlationId}] Error fetching companion ${companionId}: ${err.message}`
       );
-      throw new NotFoundException(`Companion profile not found`);
+      throw new ServiceUnavailableException('Companion profile service is unavailable.');
     }
   }
 
-  // ── GET /api/v1/internal/campaigns ──────────────────────────────────────────
+  // ── GET /api/internal/announcements/customers/active ───────────────────────
   async getCampaigns() {
     const correlationId = crypto.randomUUID();
-    const internalCampaignUrl = `${this.companionApiUrl}/api/v1/internal/campaigns`;
-
     try {
-      const res = await fetch(internalCampaignUrl, {
+      const res = await fetch(
+        `${this.adminApiUrl}/api/internal/announcements/customers/active`,
+        {
         headers: this.getHeaders(correlationId),
         signal: AbortSignal.timeout(5000),
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        const campaigns = Array.isArray(data) ? data : (data.campaigns || []);
-        if (campaigns.length > 0) {
-          return { success: true, campaigns };
-        }
-      }
-    } catch (err: any) {
-      this.logger.debug(
-        `[CompanionClient] [${correlationId}] Companion campaign bridge fallback: ${err.message}`
+        },
       );
-    }
-
-    // Fallback to Admin announcements if companion campaign endpoint returned empty or failed
-    try {
-      const adminUrl = `${this.adminApiUrl}/api/marketing/announcements/active`;
-      const res = await fetch(adminUrl, {
-        headers: { Accept: 'application/json' },
-        signal: AbortSignal.timeout(4000),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        const list = Array.isArray(data) ? data : (data.data || []);
-        const campaigns = list
-          .filter((c: any) => {
-            if (c.status !== 'PUBLISHED' && c.status !== 'SENT') return false;
-            if (c.targetAudience && !['ALL', 'CUSTOMERS'].includes(c.targetAudience)) return false;
-            if (c.expiresAt && new Date(c.expiresAt) < new Date()) return false;
-            return true;
-          })
-          .map((c: any) => ({
-            id: c.id,
-            title: typeof c.title === 'string' ? c.title : (c.title?.en || 'Special Offer'),
-            message: typeof c.message === 'string' ? c.message : (c.message?.en || ''),
-            category: c.category || 'PROMOTION',
-            targetAudience: c.targetAudience || 'CUSTOMERS',
-            bannerUrl: c.bannerUrl || null,
-            actionUrl: c.actionUrl || null,
-            startsAt: c.publishedAt,
-            endsAt: c.expiresAt,
-          }));
-
-        return { success: true, campaigns };
+      if (!res.ok) {
+        throw new Error(`Admin announcement service responded with status ${res.status}`);
       }
-    } catch (err: any) {
-      this.logger.warn(`[CompanionClient] Admin announcement fallback failed: ${err.message}`);
-    }
 
-    return { success: true, campaigns: [] };
+      const payload: any = await res.json();
+      const list = Array.isArray(payload)
+        ? payload
+        : Array.isArray(payload?.data)
+          ? payload.data
+          : Array.isArray(payload?.announcements)
+            ? payload.announcements
+            : null;
+      if (!list) throw new Error('Admin announcement service returned an invalid payload');
+
+      const now = Date.now();
+      const campaigns = list
+        .filter((announcement: any) => {
+          if (announcement.isPublished !== true) return false;
+          if (!['ALL', 'CUSTOMERS'].includes(announcement.targetAudience)) return false;
+          const publishedAt = Date.parse(announcement.publishedAt ?? '');
+          if (!Number.isFinite(publishedAt) || publishedAt > now) return false;
+          if (announcement.scheduledFor) {
+            const scheduledFor = Date.parse(announcement.scheduledFor);
+            if (!Number.isFinite(scheduledFor) || scheduledFor > now) return false;
+          }
+          if (announcement.expiresAt) {
+            const expiresAt = Date.parse(announcement.expiresAt);
+            if (!Number.isFinite(expiresAt) || expiresAt <= now) return false;
+          }
+          const title = typeof announcement.title === 'string'
+            ? announcement.title
+            : announcement.title?.en;
+          const message = typeof announcement.message === 'string'
+            ? announcement.message
+            : announcement.message?.en;
+          if (typeof title !== 'string' || !title.trim()) return false;
+          if (typeof message !== 'string' || !message.trim()) return false;
+          return true;
+        })
+        .map((announcement: any) => ({
+          id: announcement.id,
+          title: typeof announcement.title === 'string'
+            ? announcement.title
+            : announcement.title?.en || '',
+          message: typeof announcement.message === 'string'
+            ? announcement.message
+            : announcement.message?.en || '',
+          category: announcement.category || 'GENERAL',
+          publishedAt: announcement.publishedAt,
+          expiresAt: announcement.expiresAt || null,
+        }));
+
+      return { success: true, campaigns };
+    } catch (err: any) {
+      this.logger.warn(`[CompanionClient] Admin announcement service unavailable: ${err.message}`);
+      if (err instanceof ServiceUnavailableException) throw err;
+      throw new ServiceUnavailableException('Campaigns are temporarily unavailable.');
+    }
   }
 
   // ── POST /api/v1/internal/booking-requests ──────────────────────────────────
   async createBookingRequest(payload: any) {
     const correlationId = crypto.randomUUID();
-    const primaryUrl = `${this.companionApiUrl}/api/v1/internal/booking-requests`;
-    const fallbackUrl = `${this.companionApiUrl}/api/v1/internal/companion/requests`;
+    const endpoint = `${this.companionApiUrl}/api/v1/internal/companion/requests`;
 
-    let res = await fetch(primaryUrl, {
+    const res = await fetch(endpoint, {
       method: 'POST',
       headers: this.getHeaders(correlationId),
       body: JSON.stringify(payload),
       signal: AbortSignal.timeout(5000),
     });
-
-    if (res.status === 404) {
-      res = await fetch(fallbackUrl, {
-        method: 'POST',
-        headers: this.getHeaders(correlationId),
-        body: JSON.stringify(payload),
-        signal: AbortSignal.timeout(5000),
-      });
-    }
 
     if (res.status === 409) {
       const errJson = await res.json().catch(() => ({}));

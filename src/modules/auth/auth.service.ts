@@ -6,10 +6,13 @@ import {
   Logger,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import * as bcrypt from 'bcrypt';
 import * as crypto from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SendOtpDto, VerifyOtpDto } from './dto/auth.dto';
 import {
+  QA_TEST_OTP,
+  isReservedTestOtp,
   normalizePhone,
   isTestPhoneAllowlisted,
   isTestOtpAllowed,
@@ -36,16 +39,11 @@ export class AuthService {
     let otp: string;
 
     if (isAllowlisted) {
-      otp = '12345465';
+      otp = QA_TEST_OTP;
     } else {
-      const smsProvider = process.env.SMS_PROVIDER;
-      const msg91Key = process.env.MSG91_AUTH_KEY;
-      if (!smsProvider && !msg91Key) {
-        throw new ServiceUnavailableException(
-          'SMS provider not configured. Please contact support or configure an SMS provider.',
-        );
-      }
-      otp = crypto.randomInt(100000, 999999).toString();
+      throw new ServiceUnavailableException(
+        'SMS OTP delivery is unavailable because no SMS sender is integrated. Please contact support.',
+      );
     }
 
     const expiresAt = new Date(
@@ -57,11 +55,11 @@ export class AuthService {
 
     // Create new OTP
     await this.prisma.customerOtp.create({
-      data: { phone, otp, expiresAt },
+      data: { phone, otp: await bcrypt.hash(otp, 10), expiresAt },
     });
 
     return {
-      message: 'OTP sent successfully',
+      message: 'QA test OTP prepared; no SMS was sent.',
     };
   }
 
@@ -89,16 +87,18 @@ export class AuthService {
     }
 
     // Fixed test OTP check: only allow if flag enabled and phone is in allowlist
-    const isTestOtp = (otp === '12345465' || otp === '123456');
-    if (isTestOtp) {
-      if (!isTestOtpAllowed(phone, otp)) {
-        await this.prisma.customerOtp.update({
-          where: { id: otpRecord.id },
-          data: { attempts: { increment: 1 } },
-        });
-        throw new UnauthorizedException('Invalid OTP');
-      }
-    } else if (otpRecord.otp !== otp) {
+    const isTestOtp = isReservedTestOtp(otp);
+    const isLegacyQaCode = isTestPhoneAllowlisted(phone) && otp === '123456';
+    const isStoredHash = otpRecord.otp.startsWith('$2');
+    const matchesStoredOtp = isTestOtp
+      ? false
+      : isStoredHash
+        ? await bcrypt.compare(otp, otpRecord.otp).catch(() => false)
+        : otpRecord.otp === otp;
+    const isValid = isTestOtp
+      ? isTestOtpAllowed(phone, otp)
+      : !isLegacyQaCode && matchesStoredOtp;
+    if (!isValid) {
       await this.prisma.customerOtp.update({
         where: { id: otpRecord.id },
         data: { attempts: { increment: 1 } },

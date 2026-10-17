@@ -1,14 +1,9 @@
 import {
-  IsString, IsNotEmpty, IsOptional, IsNumber, IsPositive, IsDateString, Min, Max,
+  IsString, IsNotEmpty, IsOptional, IsNumber, IsDateString, Min, Max, IsBoolean, IsIn,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class VenueDto {
-  @ApiPropertyOptional({ example: 'v-1' })
-  @IsString()
-  @IsOptional()
-  venueId?: string;
-
   @ApiProperty({ example: 'Blue Tokai Coffee' })
   @IsString()
   @IsNotEmpty()
@@ -23,10 +18,6 @@ export class VenueDto {
   @IsString()
   @IsOptional()
   city?: string;
-
-  @ApiPropertyOptional({ example: true })
-  @IsOptional()
-  isApproved?: boolean;
 
   @ApiPropertyOptional({ example: 'cafe' })
   @IsString()
@@ -60,15 +51,15 @@ export class CreateBookingDto {
   @IsOptional()
   activity?: string;
 
-  @ApiPropertyOptional({ example: 'Coffee Meetup' })
+  @ApiProperty({ example: 'Coffee Meetup' })
   @IsString()
-  @IsOptional()
-  activityName?: string;
+  @IsNotEmpty()
+  activityName!: string;
 
-  @ApiPropertyOptional({ example: 'a1' })
+  @ApiProperty({ example: 'INT-1' })
   @IsString()
-  @IsOptional()
-  activityId?: string;
+  @IsNotEmpty()
+  activityId!: string;
 
   @ApiPropertyOptional({ example: 'coffee-outline' })
   @IsString()
@@ -79,50 +70,72 @@ export class CreateBookingDto {
   @IsOptional()
   venue?: VenueDto;
 
-  @ApiPropertyOptional({ example: 'Blue Tokai Coffee, CP' })
+  @ApiProperty({ example: 'Blue Tokai Coffee, CP' })
   @IsString()
-  @IsOptional()
-  venueName?: string;
+  @IsNotEmpty()
+  venueName!: string;
 
   @ApiPropertyOptional({ example: 'Connaught Place, New Delhi' })
   @IsString()
   @IsOptional()
   venueAddress?: string;
 
-  @ApiPropertyOptional({ example: '2026-10-24T00:00:00.000Z' })
-  @IsOptional()
-  date?: string;
+  @ApiProperty({ example: '2026-10-24T00:00:00.000Z' })
+  @IsDateString()
+  date!: string;
 
-  @ApiPropertyOptional({ example: '7:00 PM' })
+  @ApiProperty({ example: '7:00 PM' })
   @IsString()
-  @IsOptional()
-  time?: string;
+  @IsNotEmpty()
+  time!: string;
 
-  @ApiPropertyOptional({ example: '2026-10-24T19:00:00.000Z' })
-  @IsOptional()
-  scheduledStart?: string;
+  @ApiProperty({ example: 'Asia/Kolkata' })
+  @IsString()
+  @IsNotEmpty()
+  timeZone!: string;
+
+  @ApiProperty({ example: '2026-10-24T19:00:00.000Z' })
+  @IsDateString()
+  scheduledStart!: string;
 
   @ApiPropertyOptional({ example: '2026-10-24T21:00:00.000Z' })
   @IsOptional()
   scheduledEnd?: string;
 
-  @ApiPropertyOptional({ example: 2 })
+  @ApiProperty({ example: 2, minimum: 1, maximum: 8 })
   @IsNumber()
-  @IsOptional()
   @Min(1)
   @Max(8)
-  durationHours?: number;
+  durationHours!: number;
+
+  @ApiProperty({ example: true, description: 'Customer confirmed the booking safety agreement.' })
+  @IsBoolean()
+  @IsIn([true])
+  safetyAcknowledged!: true;
 
   @ApiPropertyOptional({ example: 'Please wear smart casuals.' })
   @IsString()
   @IsOptional()
   specialInstructions?: string;
 
-  @ApiPropertyOptional({ example: 500 })
+}
+
+export class BookingPriceQuoteDto {
+  @ApiProperty()
+  @IsString()
+  @IsNotEmpty()
+  companionId: string;
+
+  @ApiProperty()
+  @IsString()
+  @IsNotEmpty()
+  activityId!: string;
+
+  @ApiProperty({ minimum: 1, maximum: 8 })
   @IsNumber()
-  @IsOptional()
-  @IsPositive()
-  baseRate?: number;  // Per hour rate in INR
+  @Min(1)
+  @Max(8)
+  durationHours: number;
 }
 
 export class CounterOfferResponseDto {

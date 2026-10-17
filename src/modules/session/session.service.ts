@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { randomInt } from 'crypto';
 
@@ -146,29 +151,13 @@ export class SessionService {
   }
 
   async submitTip(customerId: string, sessionId: string, amount: number, paymentMethod?: string) {
-    const session = await this.prisma.customerSession.findFirst({
-      where: { id: sessionId, customerId },
-    });
-    if (!session) throw new NotFoundException('Session not found');
-
-    const updated = await this.prisma.customerSession.update({
-      where: { id: sessionId },
-      data: { tipAmount: { increment: amount } },
-    });
-
-    await this.prisma.customerTransaction.create({
-      data: {
-        customerId,
-        bookingId: session.bookingId,
-        type: 'tip',
-        amount,
-        description: `Tip for companion`,
-        paymentSource: paymentMethod ?? 'wallet',
-        status: 'completed',
-      },
-    });
-
-    return { message: 'Tip added successfully', tipAmount: updated.tipAmount };
+    void customerId;
+    void sessionId;
+    void amount;
+    void paymentMethod;
+    throw new ServiceUnavailableException(
+      'Tip payment is not configured. No tip or transaction was recorded.',
+    );
   }
 
   async submitFeedback(customerId: string, sessionId: string, sentiment: 'up' | 'down', tags: string[]) {

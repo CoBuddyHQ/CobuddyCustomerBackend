@@ -12,7 +12,7 @@ services:
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-cobuddy_customer_db}
       POSTGRES_USER: ${POSTGRES_USER:-cobuddy}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-development-secret-password-2026}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
     ports:
       - "5433:5432"
     volumes:
@@ -53,14 +53,14 @@ services:
     environment:
       NODE_ENV: development
       PORT: 4002
-      DATABASE_URL: postgresql://${POSTGRES_USER:-cobuddy}:${POSTGRES_PASSWORD:-development-secret-password-2026}@postgres:5432/${POSTGRES_DB:-cobuddy_customer_db}?schema=public
+      DATABASE_URL: postgresql://${POSTGRES_USER:-cobuddy}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-cobuddy_customer_db}?schema=public
       REDIS_URL: redis://redis:6379
-      JWT_SECRET: ${JWT_SECRET:-cobuddy-customer-super-secret-jwt-key-2026}
-      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-cobuddy-customer-super-secret-refresh-key-2026}
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?Set JWT_REFRESH_SECRET in .env}
       JWT_EXPIRES_IN: 15m
       JWT_REFRESH_EXPIRES_IN: 30d
-      RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID:-rzp_test_TLCpKIamWxQBYy}
-      RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET:-w2l3tVjYk6aH4zM9xQ8pL7nR}
+      RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID:-}
+      RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET:-}
       OTP_DEV_BYPASS: ${OTP_DEV_BYPASS:-123456}
       CORS_ORIGIN: "*"
     ports:

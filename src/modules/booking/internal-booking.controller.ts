@@ -28,7 +28,7 @@ export class InternalBookingController {
   @Post(':id/status-update')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Internal service endpoint for companion backend to update booking status' })
-  @ApiHeader({ name: 'x-internal-token', required: true, description: 'Internal S2S Secret Token' })
+  @ApiHeader({ name: 'X-Internal-Service-Key', required: true, description: 'Internal S2S secret' })
   @ApiResponse({ status: 200, description: 'Booking status updated successfully' })
   @ApiResponse({ status: 401, description: 'Unauthorized internal token' })
   @ApiResponse({ status: 404, description: 'Booking not found' })

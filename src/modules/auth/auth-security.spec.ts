@@ -1,4 +1,6 @@
 import {
+  QA_TEST_OTP,
+  isReservedTestOtp,
   isTestOtpAllowed,
   isTestPhoneAllowlisted,
   normalizePhone,
@@ -9,7 +11,7 @@ describe('Auth Security & QA Test OTP Bypass Safeguards', () => {
 
   beforeEach(() => {
     jest.resetModules();
-    process.env = { ...originalEnv };
+    process.env = { ...originalEnv, NODE_ENV: 'test' };
   });
 
   afterAll(() => {
@@ -46,6 +48,27 @@ describe('Auth Security & QA Test OTP Bypass Safeguards', () => {
       expect(isTestPhoneAllowlisted('9999988888')).toBe(true);
       expect(isTestPhoneAllowlisted('9111111111')).toBe(false); // Unlisted number
     });
+
+    it('does not treat another country code as the allowlisted phone', () => {
+      process.env.OTP_TEST_BYPASS_ENABLED = 'true';
+      process.env.OTP_TEST_ALLOWED_PHONES = '9876543210';
+
+      expect(isTestPhoneAllowlisted('+1 98765 43210')).toBe(false);
+    });
+
+    it('always disables the QA allowlist in production', () => {
+      process.env.NODE_ENV = 'production';
+      process.env.OTP_TEST_BYPASS_ENABLED = 'true';
+      process.env.OTP_TEST_ALLOWED_PHONES = '9876543210';
+
+      expect(isTestPhoneAllowlisted('9876543210')).toBe(false);
+    });
+  });
+
+  it('uses exactly six numeric digits for the mobile OTP inputs', () => {
+    expect(/^\d{6}$/.test(QA_TEST_OTP)).toBe(true);
+    expect(isReservedTestOtp(QA_TEST_OTP)).toBe(true);
+    expect(isReservedTestOtp('9'.repeat(6))).toBe(false);
   });
 
   describe('isTestOtpAllowed', () => {
@@ -54,12 +77,12 @@ describe('Auth Security & QA Test OTP Bypass Safeguards', () => {
       process.env.OTP_TEST_ALLOWED_PHONES = '9876543210';
     });
 
-    it('accepts exact QA code 12345465 for allowlisted phone number', () => {
-      expect(isTestOtpAllowed('9876543210', '12345465')).toBe(true);
+    it('accepts exact QA code the QA code for allowlisted phone number', () => {
+      expect(isTestOtpAllowed('9876543210', QA_TEST_OTP)).toBe(true);
     });
 
-    it('rejects exact QA code 12345465 for unlisted phone number', () => {
-      expect(isTestOtpAllowed('9112345678', '12345465')).toBe(false);
+    it('rejects exact QA code the QA code for unlisted phone number', () => {
+      expect(isTestOtpAllowed('9112345678', QA_TEST_OTP)).toBe(false);
     });
 
     it('rejects any other OTP even for an allowlisted phone number', () => {
@@ -68,9 +91,14 @@ describe('Auth Security & QA Test OTP Bypass Safeguards', () => {
       expect(isTestOtpAllowed('9876543210', '1234546')).toBe(false);
     });
 
-    it('rejects 12345465 if flag is disabled', () => {
+    it('rejects the QA code if flag is disabled', () => {
       process.env.OTP_TEST_BYPASS_ENABLED = 'false';
-      expect(isTestOtpAllowed('9876543210', '12345465')).toBe(false);
+      expect(isTestOtpAllowed('9876543210', QA_TEST_OTP)).toBe(false);
+    });
+
+    it('rejects the QA code in production even with the flag and allowlist enabled', () => {
+      process.env.NODE_ENV = 'production';
+      expect(isTestOtpAllowed('9876543210', QA_TEST_OTP)).toBe(false);
     });
   });
 });

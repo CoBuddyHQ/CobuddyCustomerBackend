@@ -155,12 +155,15 @@ export class DiscoveryService {
 
     const [featuredCompanions, campaignsRes] = await Promise.all([
       this.getFeaturedCompanions(),
-      this.getCampaigns().catch(() => ({ success: true, campaigns: [] })),
+      this.getCampaigns().catch((error: any) => {
+        this.logger.warn(`Campaign feed unavailable: ${error?.message || 'upstream error'}`);
+        return { success: false, campaigns: [] };
+      }),
     ]);
 
     const durationMs = Date.now() - startTime;
     this.logger.log(
-      `[Customer Home API] GET /api/v1/discovery/home | customerId: ${customerId || 'guest'} | categories: ${categories.length} | featuredCompanions: ${featuredCompanions.length} | campaigns: ${campaignsRes.campaigns.length} | unreadNotifs: ${unreadNotificationCount} | upcomingBookings: ${upcomingBookingCount} | duration: ${durationMs}ms`
+      `[Customer Home API] GET /api/v1/discovery/home | customer: ${customerId ? 'authenticated' : 'guest'} | categories: ${categories.length} | featuredCompanions: ${featuredCompanions.length} | campaigns: ${campaignsRes.campaigns.length} | unreadNotifs: ${unreadNotificationCount} | upcomingBookings: ${upcomingBookingCount} | duration: ${durationMs}ms`
     );
 
     return {
@@ -170,6 +173,7 @@ export class DiscoveryService {
         categories,
         featuredCompanions,
         campaigns: campaignsRes.campaigns || [],
+        campaignsAvailable: campaignsRes.success,
         quickAccess: {
           notificationCount: unreadNotificationCount,
           bookingCount: upcomingBookingCount,

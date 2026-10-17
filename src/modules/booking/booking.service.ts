@@ -4,6 +4,7 @@ import {
   BadRequestException,
   ForbiddenException,
   ConflictException,
+  ServiceUnavailableException,
   Optional,
   Logger,
 } from '@nestjs/common';
@@ -15,6 +16,7 @@ import {
   DisputeBookingDto,
   ModifyBookingDto,
   CounterOfferResponseDto,
+  BookingPriceQuoteDto,
 } from './dto/booking.dto';
 import { InternalStatusUpdateDto } from './dto/internal-status-update.dto';
 
@@ -47,61 +49,85 @@ export class BookingService {
     @Optional() private companionClient?: CompanionClientService,
   ) {}
 
-  // ── CREATE BOOKING REQUEST ────────────────────────────────────────────────
-  async createBooking(customerId: string, dto: CreateBookingDto) {
-    const actId = dto.activityId || 'INT-1';
-    const multiplier = ACTIVITY_MULTIPLIERS[actId] || 1.0;
-    
-    // Server-side authoritative pricing — fetch companion's real rate from companion backend, ignoring client-tampered baseRate
-    let companionHourlyRate = 500;
-    if (this.companionClient) {
-      try {
-        const comp = await this.companionClient.getCompanionById(dto.companionId);
-        if (comp && comp.hourlyRate) {
-          companionHourlyRate = Number(comp.hourlyRate);
-        }
-      } catch (err: any) {
-        this.logger.warn(`Could not fetch authoritative hourlyRate for companion ${dto.companionId}: ${err.message}`);
-        const clientRate = Number(dto.baseRate);
-        if (!isNaN(clientRate) && clientRate >= 300) {
-          companionHourlyRate = clientRate;
-        }
-      }
-    } else {
-      const clientRate = Number(dto.baseRate);
-      if (!isNaN(clientRate) && clientRate >= 300) {
-        companionHourlyRate = clientRate;
-      }
+  async getBookingQuote(dto: BookingPriceQuoteDto) {
+    return this.calculateAuthoritativePricing(
+      dto.companionId,
+      dto.activityId,
+      Number(dto.durationHours),
+    );
+  }
+
+  private async calculateAuthoritativePricing(
+    companionId: string,
+    activityId: string,
+    durationHours: number,
+  ) {
+    if (!Number.isFinite(durationHours) || durationHours < 1 || durationHours > 8) {
+      throw new BadRequestException('Duration must be between 1 and 8 hours.');
+    }
+    const multiplier = ACTIVITY_MULTIPLIERS[activityId];
+    if (multiplier === undefined) {
+      throw new BadRequestException('A supported activity is required to calculate booking pricing.');
+    }
+    if (!this.companionClient) {
+      throw new ServiceUnavailableException('Companion pricing is unavailable. No price was quoted.');
     }
 
-    const baseRate = companionHourlyRate * multiplier;
-    const durationHours = Math.max(Number(dto.durationHours) || 1, 1);
+    let hourlyRate: number;
+    try {
+      const companion = await this.companionClient.getCompanionById(companionId);
+      hourlyRate = Number(companion?.hourlyRate);
+    } catch {
+      this.logger.warn('Companion pricing service unavailable; no price was quoted.');
+      throw new ServiceUnavailableException('Companion pricing is unavailable. No price was quoted.');
+    }
+    if (!Number.isFinite(hourlyRate) || hourlyRate <= 0) {
+      throw new ServiceUnavailableException('Companion has no published price. No price was quoted.');
+    }
+
+    const baseRate = hourlyRate * multiplier;
     const baseTotal = Math.round(baseRate * durationHours);
     const platformFee = Math.round(baseTotal * PLATFORM_FEE_PERCENT);
     const taxAmount = Math.round(baseTotal * TAX_PERCENT);
-    const totalAmount = baseTotal + platformFee + taxAmount;
+    return {
+      currency: 'INR',
+      durationHours,
+      multiplier,
+      baseRate,
+      baseTotal,
+      platformFee,
+      taxAmount,
+      totalAmount: baseTotal + platformFee + taxAmount,
+    };
+  }
+
+  // ── CREATE BOOKING REQUEST ────────────────────────────────────────────────
+  async createBooking(customerId: string, dto: CreateBookingDto) {
+    if (dto.safetyAcknowledged !== true) {
+      throw new BadRequestException('Safety agreement must be acknowledged before booking.');
+    }
+    const actId = dto.activityId;
+    const durationHours = Number(dto.durationHours);
+    const pricing = await this.calculateAuthoritativePricing(dto.companionId, actId, durationHours);
+    const { multiplier, baseRate, baseTotal, platformFee, taxAmount, totalAmount } = pricing;
 
 
-    const vName = dto.venue?.name || dto.venueName || 'Public Venue';
+    const vName = dto.venue?.name || dto.venueName;
     const vArea = dto.venue?.area || '';
     const vCity = dto.venue?.city || '';
-    const vType = dto.venue?.venueType || 'cafe';
+    const vType = dto.venue?.venueType || 'UNVERIFIED';
     const vMeeting = dto.venue?.meetingPoint || '';
     const vLandmark = dto.venue?.landmark || '';
-    const vApproved = dto.venue?.isApproved ?? true;
-    const vId = dto.venue?.venueId || undefined;
-
-    let startDate: Date;
-    if (dto.scheduledStart) {
-      startDate = new Date(dto.scheduledStart);
-    } else if (dto.date) {
-      startDate = new Date(dto.date);
-    } else {
-      startDate = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    const vApproved = false;
+    const vId = undefined;
+    const startDate = new Date(dto.scheduledStart);
+    if (!Number.isFinite(startDate.getTime())) {
+      throw new BadRequestException('A valid scheduled start time is required.');
     }
+    this.assertLocalScheduleMatches(startDate, dto.date, dto.time, dto.timeZone);
 
-    const timeStr = dto.time || startDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    const activityTitle = dto.activityName || dto.activity || 'Activity';
+    const timeStr = dto.time;
+    const activityTitle = dto.activityName;
 
     // Double-booking conflict check — return 409 Conflict if companion already booked for overlapping active session
     const conflictingActiveSession = await this.prisma.customerBooking.findFirst({
@@ -131,7 +157,11 @@ export class BookingService {
     });
 
     if (existingDuplicate) {
-      return this.buildBookingResponse(existingDuplicate);
+      const companionRequestStatus = await this.notifyCompanionBackendOfNewBooking(existingDuplicate, customerId);
+      return {
+        ...this.buildBookingResponse(existingDuplicate),
+        companionRequestStatus: companionRequestStatus ? 'sent' : 'unavailable',
+      };
     }
 
     const booking = await this.prisma.$transaction(async (tx) => {
@@ -149,6 +179,7 @@ export class BookingService {
           venueArea: vArea,
           venueCity: vCity,
           venueType: vType,
+          safetyAcknowledged: dto.safetyAcknowledged,
           meetingPoint: vMeeting,
           landmark: vLandmark,
           isApproved: vApproved,
@@ -183,16 +214,15 @@ export class BookingService {
       return created;
     });
 
-    this.logger.log(
-      `[BOOKING REQUEST CREATED] Booking ID: ${booking.id} | Customer: ${customerId} | Companion: ${dto.companionName || dto.companionId} | Activity: ${activityTitle} | Venue: ${vName} | Date: ${startDate.toISOString().split('T')[0]} ${timeStr} | Duration: ${durationHours}h | BaseRate: ₹${baseRate}/hr | PlatformFee: ₹${platformFee} | Tax: ₹${taxAmount} | TotalAmount: ₹${totalAmount}`
-    );
+    this.logger.log('Booking request and server-calculated price were stored.');
 
-    // Outbound S2S notification to Companion Backend
-    this.notifyCompanionBackendOfNewBooking(booking, customerId).catch((err) => {
-      this.logger.warn(`Failed to dispatch booking to companion backend: ${err.message}`);
-    });
-
-    return this.buildBookingResponse(booking);
+    // Return the dispatch outcome so the app cannot claim the companion received
+    // the request when the cross-service call failed.
+    const companionRequestStatus = await this.notifyCompanionBackendOfNewBooking(booking, customerId);
+    return {
+      ...this.buildBookingResponse(booking),
+      companionRequestStatus: companionRequestStatus ? 'sent' : 'unavailable',
+    };
   }
 
   // ── LIST BOOKINGS ─────────────────────────────────────────────────────────
@@ -420,13 +450,13 @@ export class BookingService {
     const endDate = new Date(startDate.getTime() + durationMs);
 
     const venueObj = {
-      venueId: booking.venueId || `v-${booking.id.slice(0, 6)}`,
-      name: booking.venueName || 'Public Venue',
+      venueId: booking.venueId ?? null,
+      name: booking.venueName,
       area: booking.venueArea || '',
       city: booking.venueCity || '',
-      isApproved: booking.isApproved ?? true,
-      venueType: booking.venueType || 'cafe',
-      meetingPoint: booking.meetingPoint || 'Main entrance seating',
+      isApproved: booking.isApproved ?? false,
+      venueType: booking.venueType,
+      meetingPoint: booking.meetingPoint,
       landmark: booking.landmark || '',
     };
 
@@ -454,7 +484,7 @@ export class BookingService {
       sessionStatus: activeSession?.status || (booking.status === 'accepted' ? 'upcoming' : undefined),
       status: booking.status,
       sessionPassCode: activeSession?.passCode ?? null,
-      matchScore: booking.matchScore ?? 95,
+      matchScore: null,
       safetyTimerActive: false,
       earningsBreakdown: {
         base: booking.baseTotal,
@@ -705,7 +735,7 @@ export class BookingService {
   }
 
   // ── S2S HELPER: DISPATCH BOOKING TO COMPANION BACKEND ─────────────────────
-  private async notifyCompanionBackendOfNewBooking(booking: any, customerId: string) {
+  private async notifyCompanionBackendOfNewBooking(booking: any, customerId: string): Promise<boolean> {
     const customer = await this.prisma.customer.findUnique({
       where: { id: customerId },
       select: { name: true, kycStatus: true },
@@ -720,10 +750,9 @@ export class BookingService {
       }
     }
     const isVerified = customer?.kycStatus === 'verified';
-    const trustScore = isVerified ? 90 : 75;
 
     const companionBackendUrl = process.env.COMPANION_API_URL || 'http://localhost:4001';
-    const internalToken = process.env.INTERNAL_SERVICE_TOKEN || 'cobuddy-internal-service-s2s-token-2026';
+    const internalToken = process.env.INTERNAL_SERVICE_SECRET;
 
     const startDate = new Date(booking.date);
     const durationMs = (booking.durationHours || 1) * 60 * 60 * 1000;
@@ -734,19 +763,19 @@ export class BookingService {
       companionId: booking.companionId,
       customerId,
       customerInitials: initials,
-      customerTrustScore: trustScore,
       customerVerified: isVerified,
+      customerSafetyConsent: booking.safetyAcknowledged === true,
       category: this.mapActivityToCategory(booking.activityName),
       venueName: booking.venueName,
       venueArea: booking.venueArea || '',
       venueCity: booking.venueCity || '',
-      venueType: booking.venueType || 'PUBLIC',
+      venueType: booking.venueType || 'UNVERIFIED',
       venueMeetingPoint: booking.meetingPoint || '',
       venueLandmark: booking.landmark || '',
       proposedStart: startDate.toISOString(),
       proposedEnd: endDate.toISOString(),
       durationMinutes: Math.round((booking.durationHours || 1) * 60),
-      language: 'Hindi',
+      language: 'Unspecified',
       estimatedEarning: booking.baseTotal,
       customerNote: booking.specialInstructions || undefined,
       expiresAt: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
@@ -756,11 +785,16 @@ export class BookingService {
       try {
         await this.companionClient.createBookingRequest(payload);
         this.logger.log(`Successfully dispatched booking ${booking.id} to companion backend via CompanionClientService`);
-        return;
-      } catch (err: any) {
-        this.logger.warn(`Failed to dispatch booking ${booking.id} to companion backend: ${err.message}`);
-        return;
+        return true;
+      } catch {
+        this.logger.warn('Failed to dispatch booking request to Companion Backend.');
+        return false;
       }
+    }
+
+    if (!internalToken) {
+      this.logger.warn('Cannot dispatch booking request: S2S secret is not configured.');
+      return false;
     }
 
     try {
@@ -768,18 +802,22 @@ export class BookingService {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-internal-token': internalToken,
+          'x-internal-service-key': internalToken,
         },
         body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(5000),
       });
 
       if (!res.ok) {
-        this.logger.warn(`Failed to dispatch booking ${booking.id} to companion backend: ${res.status} ${res.statusText}`);
+        this.logger.warn(`Failed to dispatch booking request to Companion Backend with status ${res.status}.`);
+        return false;
       } else {
         this.logger.log(`Successfully dispatched booking ${booking.id} to companion backend at ${companionBackendUrl}`);
+        return true;
       }
-    } catch (err: any) {
-      this.logger.warn(`Error connecting to companion backend at ${companionBackendUrl}: ${err.message}`);
+    } catch {
+      this.logger.warn('Could not connect to Companion Backend to dispatch booking request.');
+      return false;
     }
   }
 
@@ -797,5 +835,55 @@ export class BookingService {
     if (norm.includes('movie') || norm.includes('cinema')) return 'movies';
     return 'cafe_conversation';
   }
-}
 
+  private assertLocalScheduleMatches(startDate: Date, date: string, time: string, timeZone: string) {
+    const dateMatch = date.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    const timeMatch = time.trim().match(/^(\d{1,2}):(\d{2})(?:\s*(AM|PM))?$/i);
+    if (!dateMatch || !timeMatch) {
+      throw new BadRequestException('Booking date and display time must use supported formats.');
+    }
+
+    const [, year, month, day] = dateMatch;
+    const [, hourText, minuteText, meridiem] = timeMatch;
+    let requestedHour = Number(hourText);
+    const requestedMinute = Number(minuteText);
+    if (requestedMinute > 59) {
+      throw new BadRequestException('Booking display time is invalid.');
+    }
+    if (meridiem) {
+      if (requestedHour < 1 || requestedHour > 12) {
+        throw new BadRequestException('Booking display time is invalid.');
+      }
+      requestedHour = meridiem.toUpperCase() === 'AM'
+        ? (requestedHour === 12 ? 0 : requestedHour)
+        : (requestedHour === 12 ? 12 : requestedHour + 12);
+    } else if (requestedHour > 23) {
+      throw new BadRequestException('Booking display time is invalid.');
+    }
+
+    try {
+      const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hourCycle: 'h23',
+      }).formatToParts(startDate);
+      const value = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value;
+      if (
+        value('year') !== year ||
+        value('month') !== month ||
+        value('day') !== day ||
+        Number(value('hour')) !== requestedHour ||
+        Number(value('minute')) !== requestedMinute
+      ) {
+        throw new BadRequestException('Booking timestamp does not match the selected local date and time.');
+      }
+    } catch (error) {
+      if (error instanceof BadRequestException) throw error;
+      throw new BadRequestException('A valid IANA time zone is required for the booking.');
+    }
+  }
+}

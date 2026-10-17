@@ -23,14 +23,15 @@ export class SafetyService {
     });
 
     const contactCount = contacts.length;
-    console.log(`🚨 SOS triggered for customer ${customerId}. Contacts notified (${contactCount}):`, contacts.map(c => c.phone));
+    // The trusted-contact list is only stored in this service. No SMS, push, or
+    // emergency-dispatch provider is configured, so do not claim delivery.
 
     return {
-      message: contactCount > 0
-        ? `SOS activated. ${contactCount} trusted contact(s) alerted with your live status.`
-        : 'SOS activated. Safety incident logged with CoBuddy emergency dispatch.',
+      message: 'SOS event recorded. Emergency contacts and dispatch were not notified because no delivery provider is configured.',
       sosId: sos.id,
-      contactsNotified: contactCount,
+      trustedContactCount: contactCount,
+      contactsNotified: false,
+      dispatchStatus: 'NOT_CONFIGURED',
     };
   }
 

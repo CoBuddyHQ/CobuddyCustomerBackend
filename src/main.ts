@@ -15,6 +15,23 @@ const logger = new Logger('Bootstrap');
 async function bootstrap() {
   const isProd = process.env.NODE_ENV === 'production';
 
+  if (isProd) {
+    const invalidProductionConfig: string[] = [];
+    if (process.env.OTP_TEST_BYPASS_ENABLED === 'true') {
+      invalidProductionConfig.push('OTP_TEST_BYPASS_ENABLED must be false');
+    }
+    if (!process.env.INTERNAL_SERVICE_SECRET) {
+      invalidProductionConfig.push('INTERNAL_SERVICE_SECRET is required');
+    }
+    if (!process.env.ADMIN_API_URL) {
+      invalidProductionConfig.push('ADMIN_API_URL is required for live customer campaigns');
+    }
+    if (invalidProductionConfig.length > 0) {
+      logger.error(`Startup blocked: Invalid production configuration: ${invalidProductionConfig.join(', ')}`);
+      process.exit(1);
+    }
+  }
+
   const app = await NestFactory.create(AppModule, {
     // Show logs in terminal so requests, responses and OTP are visible
     logger: ['error', 'warn', 'log', 'debug'],

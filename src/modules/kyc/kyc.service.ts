@@ -71,18 +71,17 @@ export class KycService {
         throw new BadRequestException('Document number is required');
       }
       const docNumber = rawDocNum.trim();
-      const legalName = (dto.legalName || 'Verified Customer').trim();
+      const legalName = dto.legalName.trim();
 
-      const finalFront = frontDocUrl || dto.frontDocUrl || dto.frontDocUri;
+      const finalFront = frontDocUrl;
       if (!finalFront) {
         throw new BadRequestException('Front document image or file is required');
       }
-      const finalBack = backDocUrl || dto.backDocUrl || dto.backDocUri || null;
+      const finalBack = backDocUrl || null;
 
       // Mask PII in logs: show only doc type + last-4 of docNumber
       const maskedDoc = docNumber.length > 4 ? `****${docNumber.slice(-4)}` : '****';
-      const maskedName = legalName.length > 2 ? `${legalName[0]}${'*'.repeat(legalName.length - 2)}${legalName.slice(-1)}` : '**';
-      this.logger.log(`[KYC SUBMIT] customerId: ${customerId} | docType: ${docType} | docNumber: ${maskedDoc} | legalName: ${maskedName}`);
+      this.logger.log(`KYC document evidence received for customer ${customerId} (type ${docType}, number ${maskedDoc}).`);
 
       // Upsert KYC record
       const kyc = await this.prisma.customerKyc.upsert({
@@ -114,10 +113,13 @@ export class KycService {
         data: { kycStatus: 'pending' },
       });
 
-      this.logger.log(`[KYC SUBMIT] Success — KYC record: ${kyc.id}`);
-      return { message: 'Document submitted for review', kyc: { ...kyc, docNumber: maskedDoc } };
+      this.logger.log('KYC document evidence stored; administrative review is not connected to this service.');
+      return {
+        message: 'Document evidence was stored and marked pending. Administrative review is not connected.',
+        kyc: { ...kyc, docNumber: maskedDoc },
+      };
     } catch (err: any) {
-      this.logger.error(`[KYC SUBMIT ERROR] customerId: ${customerId} | ${err.message}`, err.stack);
+      this.logger.error('KYC document evidence could not be stored.');
       throw err;
     }
   }
@@ -144,19 +146,9 @@ export class KycService {
       update: { livenessUrl },
     });
 
-    // Auto-approve ONLY in explicit development with flag enabled
-    if (process.env.NODE_ENV === 'development' && process.env.AUTO_APPROVE_KYC === 'true') {
-      await this.prisma.customerKyc.update({
-        where: { customerId },
-        data: { status: 'verified', verifiedAt: new Date() },
-      });
-      await this.prisma.customer.update({
-        where: { id: customerId },
-        data: { kycStatus: 'verified' },
-      });
-    }
-
-    return { message: 'Liveness check complete. Verification submitted.' };
+    return {
+      message: 'Liveness evidence was stored. No automated assessment or Admin review was performed.',
+    };
   }
 
   async resubmit(customerId: string) {

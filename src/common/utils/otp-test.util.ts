@@ -4,10 +4,18 @@
  * Implements strict QA testing bypass for OTP:
  * - Feature flag: OTP_TEST_BYPASS_ENABLED === 'true' (default: false)
  * - Allowlist: OTP_TEST_ALLOWED_PHONES (comma-separated phone numbers)
- * - Fixed QA code: '12345465'
+ * - Fixed QA code matches the six-digit mobile OTP contract.
  *
- * An unlisted phone number or disabled flag WILL NEVER be permitted to use 12345465.
+ * An unlisted phone number or disabled flag cannot use a reserved QA code.
  */
+
+// Reserved for opt-in, allowlisted QA sessions; never issue these via an SMS provider.
+export const QA_TEST_OTP = '123454';
+const RETIRED_QA_TEST_OTP = '12345465';
+
+export function isReservedTestOtp(otp: string): boolean {
+  return otp === QA_TEST_OTP || otp === RETIRED_QA_TEST_OTP;
+}
 
 export function normalizePhone(phone: string): string {
   if (!phone) return '';
@@ -35,13 +43,18 @@ export function isTestPhoneAllowlisted(phone: string): boolean {
     .map(p => normalizePhone(p))
     .filter(Boolean);
 
-  return allowedList.some(
-    allowed => normalizedInput.endsWith(allowed) || allowed.endsWith(normalizedInput),
-  );
+  const phoneVariants = new Set([normalizedInput]);
+  if (normalizedInput.length === 10) {
+    phoneVariants.add(`91${normalizedInput}`);
+  } else if (normalizedInput.length === 12 && normalizedInput.startsWith('91')) {
+    phoneVariants.add(normalizedInput.slice(2));
+  }
+
+  return allowedList.some(allowed => phoneVariants.has(allowed));
 }
 
 export function isTestOtpAllowed(phone: string, otp: string): boolean {
-  if (otp !== '12345465' && otp !== '123456') {
+  if (otp !== QA_TEST_OTP) {
     return false;
   }
   return isTestPhoneAllowlisted(phone);

@@ -16,7 +16,8 @@ export class HttpExceptionFilter implements ExceptionFilter {
     const ctx = host.switchToHttp();
     const response = ctx.getResponse<Response>();
     const request = ctx.getRequest<Request>();
-    const { method, url, body, query, ip } = request;
+    const { method } = request;
+    const requestPath = request.path || request.url.split('?')[0];
 
     const status =
       exception instanceof HttpException
@@ -33,32 +34,10 @@ export class HttpExceptionFilter implements ExceptionFilter {
         ? message
         : { message };
 
-    // Sanitize sensitive fields — otp is shown plainly for debugging
-    const sanitize = (obj: any) => {
-      if (!obj || typeof obj !== 'object') return obj;
-      const copy = { ...obj };
-      const sensitiveKeys = ['password', 'pass', 'pin', 'token', 'secret'];
-      sensitiveKeys.forEach(key => {
-        if (key in copy && typeof copy[key] === 'string') {
-          copy[key] = '***MASKED***';
-        }
-      });
-      return copy;
-    };
-
-    const sanitizedBody = sanitize(body);
-    const bodyStr = Object.keys(sanitizedBody || {}).length ? ` | Body: ${JSON.stringify(sanitizedBody)}` : '';
-    const queryStr = Object.keys(query || {}).length ? ` | Query: ${JSON.stringify(query)}` : '';
-
     if (status >= 500) {
-      this.logger.error(
-        `❌ [HTTP ERROR ${status}] ${method} ${url} (IP: ${ip || 'local'})${queryStr}${bodyStr} → ${JSON.stringify(message)}`,
-        exception instanceof Error ? exception.stack : String(exception),
-      );
+      this.logger.error(`[HTTP ERROR ${status}] ${method} ${requestPath}`);
     } else {
-      this.logger.warn(
-        `⚠️ [HTTP WARN ${status}] ${method} ${url} (IP: ${ip || 'local'})${queryStr}${bodyStr} → ${JSON.stringify(message)}`,
-      );
+      this.logger.warn(`[HTTP WARN ${status}] ${method} ${requestPath}`);
     }
 
     if (response.headersSent) {
@@ -69,9 +48,12 @@ export class HttpExceptionFilter implements ExceptionFilter {
       success: false,
       statusCode: status,
       timestamp: new Date().toISOString(),
-      path: request.url,
-      ...(typeof errorBody === 'object' ? errorBody : { message: errorBody }),
+      path: requestPath,
+      ...(status >= 500
+        ? { message: 'Internal server error' }
+        : typeof errorBody === 'object'
+          ? errorBody
+          : { message: errorBody }),
     });
   }
 }
-
