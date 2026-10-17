@@ -77,11 +77,11 @@ describe('Auth Security & QA Test OTP Bypass Safeguards', () => {
       process.env.OTP_TEST_ALLOWED_PHONES = '9876543210';
     });
 
-    it('accepts exact QA code the QA code for allowlisted phone number', () => {
+    it('accepts the exact QA code for allowlisted phone number', () => {
       expect(isTestOtpAllowed('9876543210', QA_TEST_OTP)).toBe(true);
     });
 
-    it('rejects exact QA code the QA code for unlisted phone number', () => {
+    it('rejects the exact QA code for unlisted phone number', () => {
       expect(isTestOtpAllowed('9112345678', QA_TEST_OTP)).toBe(false);
     });
 

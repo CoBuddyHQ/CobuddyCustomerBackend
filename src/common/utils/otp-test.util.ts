@@ -11,7 +11,7 @@
 
 // Reserved for opt-in, allowlisted QA sessions; never issue these via an SMS provider.
 export const QA_TEST_OTP = '123454';
-const RETIRED_QA_TEST_OTP = '12345465';
+export const RETIRED_QA_TEST_OTP = '12345465';
 
 export function isReservedTestOtp(otp: string): boolean {
   return otp === QA_TEST_OTP || otp === RETIRED_QA_TEST_OTP;
