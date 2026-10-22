@@ -100,3 +100,12 @@ describe('AccountService mobile number change', () => {
     },
   );
 });
+
+describe('AccountService reactivation requests', () => {
+  it('does not report success while the Admin review path is unavailable', async () => {
+    const service = new AccountService({} as PrismaService);
+
+    await expect(service.submitReactivationRequest({ reason: 'Please review my account.' }))
+      .rejects.toBeInstanceOf(ServiceUnavailableException);
+  });
+});

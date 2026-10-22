@@ -19,26 +19,10 @@ import {
   BookingPriceQuoteDto,
 } from './dto/booking.dto';
 import { InternalStatusUpdateDto } from './dto/internal-status-update.dto';
+import { ACTIVITY_MULTIPLIERS } from '../../common/constants/activity-catalog';
 
 const PLATFORM_FEE_PERCENT = 0.15; // 15% matching adminValues.commission.platformFeePercentage
 const TAX_PERCENT = 0.18; // 18% GST matching adminValues.commission.taxPercentage
-
-// Authoritative Activity Multipliers
-const ACTIVITY_MULTIPLIERS: Record<string, number> = {
-  'INT-1': 1.0,
-  'INT-2': 1.2,
-  'INT-3': 1.0,
-  'INT-4': 1.0,
-  'INT-5': 1.5,
-  'INT-6': 1.0,
-  'INT-7': 1.2,
-  'INT-8': 1.5,
-  'INT-9': 1.2,
-  'INT-10': 1.5,
-  'INT-11': 1.0,
-  'INT-12': 1.2,
-  'INT-13': 1.0,
-};
 
 @Injectable()
 export class BookingService {
@@ -62,27 +46,42 @@ export class BookingService {
     activityId: string,
     durationHours: number,
   ) {
-    if (!Number.isFinite(durationHours) || durationHours < 1 || durationHours > 8) {
+    if (
+      !Number.isFinite(durationHours) ||
+      durationHours < 1 ||
+      durationHours > 8
+    ) {
       throw new BadRequestException('Duration must be between 1 and 8 hours.');
     }
     const multiplier = ACTIVITY_MULTIPLIERS[activityId];
     if (multiplier === undefined) {
-      throw new BadRequestException('A supported activity is required to calculate booking pricing.');
+      throw new BadRequestException(
+        'A supported activity is required to calculate booking pricing.',
+      );
     }
     if (!this.companionClient) {
-      throw new ServiceUnavailableException('Companion pricing is unavailable. No price was quoted.');
+      throw new ServiceUnavailableException(
+        'Companion pricing is unavailable. No price was quoted.',
+      );
     }
 
     let hourlyRate: number;
     try {
-      const companion = await this.companionClient.getCompanionById(companionId);
+      const companion =
+        await this.companionClient.getCompanionById(companionId);
       hourlyRate = Number(companion?.hourlyRate);
     } catch {
-      this.logger.warn('Companion pricing service unavailable; no price was quoted.');
-      throw new ServiceUnavailableException('Companion pricing is unavailable. No price was quoted.');
+      this.logger.warn(
+        'Companion pricing service unavailable; no price was quoted.',
+      );
+      throw new ServiceUnavailableException(
+        'Companion pricing is unavailable. No price was quoted.',
+      );
     }
     if (!Number.isFinite(hourlyRate) || hourlyRate <= 0) {
-      throw new ServiceUnavailableException('Companion has no published price. No price was quoted.');
+      throw new ServiceUnavailableException(
+        'Companion has no published price. No price was quoted.',
+      );
     }
 
     const baseRate = hourlyRate * multiplier;
@@ -104,13 +103,25 @@ export class BookingService {
   // ── CREATE BOOKING REQUEST ────────────────────────────────────────────────
   async createBooking(customerId: string, dto: CreateBookingDto) {
     if (dto.safetyAcknowledged !== true) {
-      throw new BadRequestException('Safety agreement must be acknowledged before booking.');
+      throw new BadRequestException(
+        'Safety agreement must be acknowledged before booking.',
+      );
     }
     const actId = dto.activityId;
     const durationHours = Number(dto.durationHours);
-    const pricing = await this.calculateAuthoritativePricing(dto.companionId, actId, durationHours);
-    const { multiplier, baseRate, baseTotal, platformFee, taxAmount, totalAmount } = pricing;
-
+    const pricing = await this.calculateAuthoritativePricing(
+      dto.companionId,
+      actId,
+      durationHours,
+    );
+    const {
+      multiplier,
+      baseRate,
+      baseTotal,
+      platformFee,
+      taxAmount,
+      totalAmount,
+    } = pricing;
 
     const vName = dto.venue?.name || dto.venueName;
     const vArea = dto.venue?.area || '';
@@ -122,26 +133,34 @@ export class BookingService {
     const vId = undefined;
     const startDate = new Date(dto.scheduledStart);
     if (!Number.isFinite(startDate.getTime())) {
-      throw new BadRequestException('A valid scheduled start time is required.');
+      throw new BadRequestException(
+        'A valid scheduled start time is required.',
+      );
     }
-    this.assertLocalScheduleMatches(startDate, dto.date, dto.time, dto.timeZone);
+    this.assertLocalScheduleMatches(
+      startDate,
+      dto.date,
+      dto.time,
+      dto.timeZone,
+    );
 
     const timeStr = dto.time;
     const activityTitle = dto.activityName;
 
     // Double-booking conflict check — return 409 Conflict if companion already booked for overlapping active session
-    const conflictingActiveSession = await this.prisma.customerBooking.findFirst({
-      where: {
-        companionId: dto.companionId,
-        date: startDate,
-        time: timeStr,
-        status: { in: ['accepted', 'confirmed', 'in_progress'] },
-      },
-    });
+    const conflictingActiveSession =
+      await this.prisma.customerBooking.findFirst({
+        where: {
+          companionId: dto.companionId,
+          date: startDate,
+          time: timeStr,
+          status: { in: ['accepted', 'confirmed', 'in_progress'] },
+        },
+      });
 
     if (conflictingActiveSession) {
       throw new ConflictException(
-        'Companion already has a confirmed session during this time window (409 Conflict)'
+        'Companion already has a confirmed session during this time window (409 Conflict)',
       );
     }
 
@@ -152,12 +171,18 @@ export class BookingService {
         companionId: dto.companionId,
         date: startDate,
         time: timeStr,
-        status: { in: ['pending', 'counter_proposed', 'accepted', 'confirmed'] },
+        status: {
+          in: ['pending', 'counter_proposed', 'accepted', 'confirmed'],
+        },
       },
     });
 
     if (existingDuplicate) {
-      const companionRequestStatus = await this.notifyCompanionBackendOfNewBooking(existingDuplicate, customerId);
+      const companionRequestStatus =
+        await this.notifyCompanionBackendOfNewBooking(
+          existingDuplicate,
+          customerId,
+        );
       return {
         ...this.buildBookingResponse(existingDuplicate),
         companionRequestStatus: companionRequestStatus ? 'sent' : 'unavailable',
@@ -175,7 +200,8 @@ export class BookingService {
           activityIcon: dto.activityIcon,
           venueId: vId,
           venueName: vName,
-          venueAddress: dto.venueAddress || `${vName}, ${vArea} ${vCity}`.trim(),
+          venueAddress:
+            dto.venueAddress || `${vName}, ${vArea} ${vCity}`.trim(),
           venueArea: vArea,
           venueCity: vCity,
           venueType: vType,
@@ -218,7 +244,8 @@ export class BookingService {
 
     // Return the dispatch outcome so the app cannot claim the companion received
     // the request when the cross-service call failed.
-    const companionRequestStatus = await this.notifyCompanionBackendOfNewBooking(booking, customerId);
+    const companionRequestStatus =
+      await this.notifyCompanionBackendOfNewBooking(booking, customerId);
     return {
       ...this.buildBookingResponse(booking),
       companionRequestStatus: companionRequestStatus ? 'sent' : 'unavailable',
@@ -234,7 +261,9 @@ export class BookingService {
     } else if (filter === 'accepted') {
       where.status = { in: ['accepted', 'confirmed', 'in_progress'] };
     } else if (filter === 'history') {
-      where.status = { in: ['completed', 'declined', 'cancelled', 'expired', 'refunded'] };
+      where.status = {
+        in: ['completed', 'declined', 'cancelled', 'expired', 'refunded'],
+      };
     }
 
     const bookings = await this.prisma.customerBooking.findMany({
@@ -255,19 +284,23 @@ export class BookingService {
         statusMap[c.status] = c._count.status;
         totalAll += c._count.status;
       }
-      const pendingCount = (statusMap['pending'] || 0) + (statusMap['counter_proposed'] || 0);
-      const acceptedCount = (statusMap['accepted'] || 0) + (statusMap['confirmed'] || 0) + (statusMap['in_progress'] || 0);
+      const pendingCount =
+        (statusMap['pending'] || 0) + (statusMap['counter_proposed'] || 0);
+      const acceptedCount =
+        (statusMap['accepted'] || 0) +
+        (statusMap['confirmed'] || 0) +
+        (statusMap['in_progress'] || 0);
       const completedCount = statusMap['completed'] || 0;
       const cancelledCount = statusMap['cancelled'] || 0;
 
       this.logger.log(
-        `[Customer Bookings] customerId: ${customerId} | Database: customer_bookings | Total: ${totalAll} | Pending: ${pendingCount} | Accepted: ${acceptedCount} | Completed: ${completedCount} | Cancelled: ${cancelledCount} | Filter: ${filter || 'all'} | Returned: ${bookings.length}`
+        `[Customer Bookings] customerId: ${customerId} | Database: customer_bookings | Total: ${totalAll} | Pending: ${pendingCount} | Accepted: ${acceptedCount} | Completed: ${completedCount} | Cancelled: ${cancelledCount} | Filter: ${filter || 'all'} | Returned: ${bookings.length}`,
       );
     } catch {
       // Safe fallback if groupBy fails
     }
 
-    return bookings.map(b => this.buildBookingResponse(b));
+    return bookings.map((b) => this.buildBookingResponse(b));
   }
 
   // ── GET BOOKING DETAIL ────────────────────────────────────────────────────
@@ -281,21 +314,33 @@ export class BookingService {
   }
 
   // ── CANCEL BOOKING (Tiered Refund Calculation) ────────────────────────────
-  async cancelBooking(customerId: string, bookingId: string, dto: CancelBookingDto) {
+  async cancelBooking(
+    customerId: string,
+    bookingId: string,
+    dto: CancelBookingDto,
+  ) {
     const booking = await this.prisma.customerBooking.findFirst({
       where: { id: bookingId, customerId },
     });
     if (!booking) throw new NotFoundException('Booking not found');
 
-    const cancellableStatuses = ['pending', 'counter_proposed', 'accepted', 'confirmed'];
+    const cancellableStatuses = [
+      'pending',
+      'counter_proposed',
+      'accepted',
+      'confirmed',
+    ];
     if (!cancellableStatuses.includes(booking.status)) {
-      throw new BadRequestException(`Cannot cancel a booking with status: ${booking.status}`);
+      throw new BadRequestException(
+        `Cannot cancel a booking with status: ${booking.status}`,
+      );
     }
 
     // Calculate hours remaining until booking date
     const now = new Date();
     const bookingTime = new Date(booking.date);
-    const diffHours = (bookingTime.getTime() - now.getTime()) / (1000 * 60 * 60);
+    const diffHours =
+      (bookingTime.getTime() - now.getTime()) / (1000 * 60 * 60);
 
     let refundPercent = 100;
     if (diffHours >= 48) {
@@ -306,7 +351,17 @@ export class BookingService {
       refundPercent = 0;
     }
 
-    const refundAmount = Math.round((booking.totalAmount * refundPercent) / 100);
+    const refundAmount = Math.round(
+      (booking.totalAmount * refundPercent) / 100,
+    );
+
+    const isPaid = booking.paymentStatus === 'completed';
+    const actualRefundAmount = isPaid ? refundAmount : 0;
+    if (actualRefundAmount > 0) {
+      throw new ServiceUnavailableException(
+        'A payment-provider refund is required but refunds are not configured. The booking was not cancelled and no wallet credit was issued.',
+      );
+    }
 
     const updated = await this.prisma.customerBooking.update({
       where: { id: bookingId },
@@ -318,82 +373,151 @@ export class BookingService {
     });
 
     // Process wallet refund ONLY if booking was actually paid
-    const isPaid = (booking.paymentStatus as any) === 'paid' || booking.paymentStatus === 'completed';
-    const actualRefundAmount = isPaid ? refundAmount : 0;
-
-    if (actualRefundAmount > 0) {
-      await this.prisma.$transaction(async (tx) => {
-        // Update wallet balance
-        await tx.customerWallet.updateMany({
-          where: { customerId },
-          data: { balance: { increment: actualRefundAmount } },
-        });
-
-        // Create refund transaction record
-        await tx.customerTransaction.create({
-          data: {
-            customerId,
-            bookingId,
-            type: 'refund',
-            amount: actualRefundAmount,
-            description: `Refund — Booking Cancelled (${refundPercent}% policy applied)`,
-            status: 'completed',
-          },
-        });
-
-        // Send notification
-        await tx.customerNotification.create({
-          data: {
-            customerId,
-            title: `Refund of ₹${actualRefundAmount} Processed`,
-            description: `Your ${refundPercent}% refund has been added to your CoBuddy wallet.`,
-            category: 'payment',
-            icon: 'wallet',
-            iconColor: '#27AE60',
-          },
-        });
-      });
-    }
-
     const response = this.buildBookingResponse(updated);
     return {
       ...response,
       cancellationSummary: {
         hoursBeforeStart: Math.round(diffHours),
-        refundPercent,
-        refundAmount,
-        policyApplied: diffHours >= 48 ? '48h+ Tier (100%)' : (diffHours >= 24 ? '24-48h Tier (50%)' : '<24h Tier (0%)'),
+        refundPercent: isPaid ? refundPercent : 0,
+        refundAmount: actualRefundAmount,
+        policyApplied:
+          diffHours >= 48
+            ? '48h+ Tier (100%)'
+            : diffHours >= 24
+              ? '24-48h Tier (50%)'
+              : '<24h Tier (0%)',
       },
     };
   }
 
   // ── MODIFY BOOKING ────────────────────────────────────────────────────────
-  async modifyBooking(customerId: string, bookingId: string, dto: ModifyBookingDto) {
+  async modifyBooking(
+    customerId: string,
+    bookingId: string,
+    dto: ModifyBookingDto,
+  ) {
     const booking = await this.prisma.customerBooking.findFirst({
       where: { id: bookingId, customerId },
     });
     if (!booking) throw new NotFoundException('Booking not found');
 
-    if (!['pending', 'counter_proposed'].includes(booking.status)) {
-      throw new BadRequestException('Can only modify a pending or counter-proposed booking');
+    if (booking.status !== 'pending') {
+      throw new BadRequestException('Only a pending booking request can be modified.');
     }
 
+    const scheduleChanged =
+      dto.date !== undefined ||
+      dto.time !== undefined ||
+      dto.scheduledStart !== undefined;
+    if (
+      scheduleChanged &&
+      (!dto.date || !dto.time || !dto.timeZone || !dto.scheduledStart)
+    ) {
+      throw new BadRequestException(
+        'Date, time, time zone, and scheduled start are required together.',
+      );
+    }
+    const scheduledStart = scheduleChanged
+      ? new Date(dto.scheduledStart!)
+      : booking.date;
+    if (!Number.isFinite(scheduledStart.getTime())) {
+      throw new BadRequestException(
+        'A valid scheduled start time is required.',
+      );
+    }
+    const requestedTime = dto.time ?? booking.time;
+    if (scheduleChanged) {
+      this.assertLocalScheduleMatches(
+        scheduledStart,
+        dto.date!,
+        requestedTime,
+        dto.timeZone!,
+      );
+    }
+    const durationHours = dto.durationHours ?? booking.durationHours;
+    const pricing = await this.calculateAuthoritativePricing(
+      booking.companionId,
+      booking.activityId ?? '',
+      durationHours,
+    );
+    const scheduledEnd = new Date(
+      scheduledStart.getTime() + durationHours * 60 * 60 * 1000,
+    );
+    const updatedValues = {
+      date: scheduledStart,
+      time: requestedTime,
+      durationHours,
+      venueName: dto.venueName ?? booking.venueName,
+      specialInstructions:
+        dto.specialInstructions ?? booking.specialInstructions,
+      baseRate: pricing.baseRate,
+      durationMultiplier: pricing.multiplier,
+      baseTotal: pricing.baseTotal,
+      platformFee: pricing.platformFee,
+      taxAmount: pricing.taxAmount,
+      totalAmount: pricing.totalAmount,
+    };
     const updated = await this.prisma.customerBooking.update({
       where: { id: bookingId },
-      data: {
-        ...(dto.date && { date: new Date(dto.date) }),
-        ...(dto.time && { time: dto.time }),
-        ...(dto.venueName && { venueName: dto.venueName }),
-        ...(dto.durationHours && { durationHours: dto.durationHours }),
-        ...(dto.specialInstructions !== undefined && { specialInstructions: dto.specialInstructions }),
-      },
+      data: updatedValues,
     });
+
+    try {
+      if (!this.companionClient)
+        throw new ServiceUnavailableException(
+          'Companion booking update is not configured.',
+        );
+      await this.companionClient.modifyBookingRequest(bookingId, {
+        proposedStart: scheduledStart.toISOString(),
+        proposedEnd: scheduledEnd.toISOString(),
+        durationMinutes: Math.round(durationHours * 60),
+        venueName: updatedValues.venueName,
+        venueArea: booking.venueArea ?? '',
+        venueCity: booking.venueCity ?? '',
+        venueType: booking.venueType ?? 'UNVERIFIED',
+        venueMeetingPoint: booking.meetingPoint ?? '',
+        venueLandmark: booking.landmark ?? '',
+        estimatedEarning: String(pricing.baseTotal),
+        customerNote: updatedValues.specialInstructions ?? '',
+      });
+    } catch (error) {
+      try {
+        await this.prisma.customerBooking.update({
+          where: { id: bookingId },
+          data: {
+            date: booking.date,
+            time: booking.time,
+            durationHours: booking.durationHours,
+            venueName: booking.venueName,
+            specialInstructions: booking.specialInstructions,
+            baseRate: booking.baseRate,
+            durationMultiplier: booking.durationMultiplier,
+            baseTotal: booking.baseTotal,
+            platformFee: booking.platformFee,
+            taxAmount: booking.taxAmount,
+            totalAmount: booking.totalAmount,
+          },
+        });
+      } catch {
+        this.logger.error(
+          'Booking change synchronization and local rollback both failed; reconciliation is required.',
+        );
+        throw new ServiceUnavailableException(
+          'Booking update requires support reconciliation. No success was reported.',
+        );
+      }
+      throw error;
+    }
 
     return this.buildBookingResponse(updated);
   }
 
   // ── ACCEPT COUNTER OFFER ──────────────────────────────────────────────────
-  async respondToCounterOffer(customerId: string, bookingId: string, dto: CounterOfferResponseDto) {
+  async respondToCounterOffer(
+    customerId: string,
+    bookingId: string,
+    dto: CounterOfferResponseDto,
+  ) {
     const booking = await this.prisma.customerBooking.findFirst({
       where: { id: bookingId, customerId, status: 'counter_proposed' },
     });
@@ -405,9 +529,12 @@ export class BookingService {
     if (dto.action === 'accept') {
       if (booking.counterDate) updateData.date = booking.counterDate;
       if (booking.counterTime) updateData.time = booking.counterTime;
-      if (booking.counterVenueName) updateData.venueName = booking.counterVenueName;
-      if (booking.counterDurationHours) updateData.durationHours = booking.counterDurationHours;
-      if (booking.counterTotalAmount) updateData.totalAmount = booking.counterTotalAmount;
+      if (booking.counterVenueName)
+        updateData.venueName = booking.counterVenueName;
+      if (booking.counterDurationHours)
+        updateData.durationHours = booking.counterDurationHours;
+      if (booking.counterTotalAmount)
+        updateData.totalAmount = booking.counterTotalAmount;
       updateData.acceptedAt = new Date();
     }
 
@@ -420,7 +547,11 @@ export class BookingService {
   }
 
   // ── DISPUTE BOOKING ───────────────────────────────────────────────────────
-  async disputeBooking(customerId: string, bookingId: string, dto: DisputeBookingDto) {
+  async disputeBooking(
+    customerId: string,
+    bookingId: string,
+    dto: DisputeBookingDto,
+  ) {
     const booking = await this.prisma.customerBooking.findFirst({
       where: { id: bookingId, customerId },
     });
@@ -440,7 +571,10 @@ export class BookingService {
       data: { status: 'disputed' },
     });
 
-    return { message: 'Dispute filed successfully. Our team will review within 24-48 hours.' };
+    return {
+      message:
+        'Dispute filed successfully. Our team will review within 24-48 hours.',
+    };
   }
 
   // ── HELPER: BUILD RICH STRUCTURED RESPONSE ────────────────────────────────
@@ -481,7 +615,9 @@ export class BookingService {
       durationHours: booking.durationHours,
       specialInstructions: booking.specialInstructions,
       requestStatus: booking.status,
-      sessionStatus: activeSession?.status || (booking.status === 'accepted' ? 'upcoming' : undefined),
+      sessionStatus:
+        activeSession?.status ||
+        (booking.status === 'accepted' ? 'upcoming' : undefined),
       status: booking.status,
       sessionPassCode: activeSession?.passCode ?? null,
       matchScore: null,
@@ -505,14 +641,17 @@ export class BookingService {
           totalAmount: `₹${booking.totalAmount.toLocaleString('en-IN')}`,
         },
       },
-      counterOffer: (booking.counterDate || booking.counterTime || booking.counterMessage) ? {
-        date: booking.counterDate,
-        time: booking.counterTime,
-        venueName: booking.counterVenueName,
-        durationHours: booking.counterDurationHours,
-        totalAmount: booking.counterTotalAmount,
-        message: booking.counterMessage,
-      } : null,
+      counterOffer:
+        booking.counterDate || booking.counterTime || booking.counterMessage
+          ? {
+              date: booking.counterDate,
+              time: booking.counterTime,
+              venueName: booking.counterVenueName,
+              durationHours: booking.counterDurationHours,
+              totalAmount: booking.counterTotalAmount,
+              message: booking.counterMessage,
+            }
+          : null,
       cancelReason: booking.cancelReason,
       declineReason: booking.declineReason,
       paymentStatus: booking.paymentStatus,
@@ -525,7 +664,10 @@ export class BookingService {
   }
 
   // ── S2S INTERNAL: HANDLE STATUS UPDATE FROM COMPANION BACKEND ─────────────
-  async handleInternalStatusUpdate(bookingId: string, dto: InternalStatusUpdateDto) {
+  async handleInternalStatusUpdate(
+    bookingId: string,
+    dto: InternalStatusUpdateDto,
+  ) {
     const booking = await this.prisma.customerBooking.findUnique({
       where: { id: bookingId },
       include: { sessions: true },
@@ -537,6 +679,11 @@ export class BookingService {
     const status = dto.status.toLowerCase();
     const effectivePassCode = dto.sessionPassCode || dto.passCode;
     if (status === 'accepted') {
+      if (!effectivePassCode) {
+        throw new BadRequestException(
+          'The Companion Backend did not provide a session pass code.',
+        );
+      }
       await this.prisma.$transaction(async (tx) => {
         await tx.customerBooking.update({
           where: { id: bookingId },
@@ -569,8 +716,8 @@ export class BookingService {
         await tx.customerNotification.create({
           data: {
             customerId: booking.customerId,
-            title: 'Booking Accepted! ✓',
-            description: `Your booking request has been accepted by ${booking.companionName || 'your companion'}. Session pass code: ${effectivePassCode || 'N/A'}`,
+          title: 'Booking Accepted! ✓',
+          description: `Your booking request has been accepted by ${booking.companionName || 'your companion'}. Your session pass is available in the app.`,
             category: 'booking',
             icon: 'calendar-check',
             iconColor: '#27AE60',
@@ -579,7 +726,7 @@ export class BookingService {
           },
         });
       });
-      this.logger.log(`[S2S] Booking ${bookingId} updated to accepted with pass code ${effectivePassCode}`);
+      this.logger.log(`[S2S] Booking ${bookingId} updated to accepted.`);
     } else if (status === 'declined') {
       await this.prisma.$transaction(async (tx) => {
         await tx.customerBooking.update({
@@ -603,7 +750,9 @@ export class BookingService {
           },
         });
       });
-      this.logger.log(`[S2S] Booking ${bookingId} updated to declined (reason: ${dto.reason})`);
+      this.logger.log(
+        `[S2S] Booking ${bookingId} updated to declined (reason: ${dto.reason})`,
+      );
     } else if (status === 'counter_proposed') {
       const counterStart = dto.newStart ? new Date(dto.newStart) : undefined;
       await this.prisma.$transaction(async (tx) => {
@@ -612,8 +761,14 @@ export class BookingService {
           data: {
             status: 'counter_proposed',
             counterDate: counterStart,
-            counterTime: counterStart ? counterStart.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : undefined,
-            counterMessage: 'Companion proposed an alternative time for this session.',
+            counterTime: counterStart
+              ? counterStart.toLocaleTimeString([], {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })
+              : undefined,
+            counterMessage:
+              'Companion proposed an alternative time for this session.',
           },
         });
 
@@ -721,7 +876,6 @@ export class BookingService {
       this.logger.log(`[S2S] Booking ${bookingId} transitioned to cancelled`);
     }
 
-
     const updated = await this.prisma.customerBooking.findUnique({
       where: { id: bookingId },
       include: { sessions: true },
@@ -735,7 +889,10 @@ export class BookingService {
   }
 
   // ── S2S HELPER: DISPATCH BOOKING TO COMPANION BACKEND ─────────────────────
-  private async notifyCompanionBackendOfNewBooking(booking: any, customerId: string): Promise<boolean> {
+  private async notifyCompanionBackendOfNewBooking(
+    booking: any,
+    customerId: string,
+  ): Promise<boolean> {
     const customer = await this.prisma.customer.findUnique({
       where: { id: customerId },
       select: { name: true, kycStatus: true },
@@ -751,7 +908,8 @@ export class BookingService {
     }
     const isVerified = customer?.kycStatus === 'verified';
 
-    const companionBackendUrl = process.env.COMPANION_API_URL || 'http://localhost:4001';
+    const companionBackendUrl =
+      process.env.COMPANION_API_URL || 'http://localhost:4001';
     const internalToken = process.env.INTERNAL_SERVICE_SECRET;
 
     const startDate = new Date(booking.date);
@@ -784,39 +942,54 @@ export class BookingService {
     if (this.companionClient) {
       try {
         await this.companionClient.createBookingRequest(payload);
-        this.logger.log(`Successfully dispatched booking ${booking.id} to companion backend via CompanionClientService`);
+        this.logger.log(
+          `Successfully dispatched booking ${booking.id} to companion backend via CompanionClientService`,
+        );
         return true;
       } catch {
-        this.logger.warn('Failed to dispatch booking request to Companion Backend.');
+        this.logger.warn(
+          'Failed to dispatch booking request to Companion Backend.',
+        );
         return false;
       }
     }
 
     if (!internalToken) {
-      this.logger.warn('Cannot dispatch booking request: S2S secret is not configured.');
+      this.logger.warn(
+        'Cannot dispatch booking request: S2S secret is not configured.',
+      );
       return false;
     }
 
     try {
-      const res = await fetch(`${companionBackendUrl}/api/v1/internal/companion/requests`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-internal-service-key': internalToken,
+      const res = await fetch(
+        `${companionBackendUrl}/api/v1/internal/companion/requests`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-internal-service-key': internalToken,
+          },
+          body: JSON.stringify(payload),
+          signal: AbortSignal.timeout(5000),
         },
-        body: JSON.stringify(payload),
-        signal: AbortSignal.timeout(5000),
-      });
+      );
 
       if (!res.ok) {
-        this.logger.warn(`Failed to dispatch booking request to Companion Backend with status ${res.status}.`);
+        this.logger.warn(
+          `Failed to dispatch booking request to Companion Backend with status ${res.status}.`,
+        );
         return false;
       } else {
-        this.logger.log(`Successfully dispatched booking ${booking.id} to companion backend at ${companionBackendUrl}`);
+        this.logger.log(
+          `Successfully dispatched booking ${booking.id} to companion backend at ${companionBackendUrl}`,
+        );
         return true;
       }
     } catch {
-      this.logger.warn('Could not connect to Companion Backend to dispatch booking request.');
+      this.logger.warn(
+        'Could not connect to Companion Backend to dispatch booking request.',
+      );
       return false;
     }
   }
@@ -825,22 +998,51 @@ export class BookingService {
     if (!activityName) return 'cafe_conversation';
     const norm = activityName.toLowerCase();
     if (norm.includes('walk') || norm.includes('explore')) return 'city_walk';
-    if (norm.includes('art') || norm.includes('museum') || norm.includes('gallery')) return 'art_culture';
-    if (norm.includes('food') || norm.includes('dine') || norm.includes('dinner') || norm.includes('lunch')) return 'food_experience';
+    if (
+      norm.includes('art') ||
+      norm.includes('museum') ||
+      norm.includes('gallery')
+    )
+      return 'art_culture';
+    if (
+      norm.includes('food') ||
+      norm.includes('dine') ||
+      norm.includes('dinner') ||
+      norm.includes('lunch')
+    )
+      return 'food_experience';
     if (norm.includes('shop')) return 'shopping_assistance';
-    if (norm.includes('event') || norm.includes('concert') || norm.includes('festival')) return 'events';
-    if (norm.includes('business') || norm.includes('network')) return 'business_networking';
+    if (
+      norm.includes('event') ||
+      norm.includes('concert') ||
+      norm.includes('festival')
+    )
+      return 'events';
+    if (norm.includes('business') || norm.includes('network'))
+      return 'business_networking';
     if (norm.includes('book')) return 'bookstore';
-    if (norm.includes('wellness') || norm.includes('fitness') || norm.includes('yoga')) return 'wellness_walk';
+    if (
+      norm.includes('wellness') ||
+      norm.includes('fitness') ||
+      norm.includes('yoga')
+    )
+      return 'wellness_walk';
     if (norm.includes('movie') || norm.includes('cinema')) return 'movies';
     return 'cafe_conversation';
   }
 
-  private assertLocalScheduleMatches(startDate: Date, date: string, time: string, timeZone: string) {
+  private assertLocalScheduleMatches(
+    startDate: Date,
+    date: string,
+    time: string,
+    timeZone: string,
+  ) {
     const dateMatch = date.match(/^(\d{4})-(\d{2})-(\d{2})/);
     const timeMatch = time.trim().match(/^(\d{1,2}):(\d{2})(?:\s*(AM|PM))?$/i);
     if (!dateMatch || !timeMatch) {
-      throw new BadRequestException('Booking date and display time must use supported formats.');
+      throw new BadRequestException(
+        'Booking date and display time must use supported formats.',
+      );
     }
 
     const [, year, month, day] = dateMatch;
@@ -854,9 +1056,14 @@ export class BookingService {
       if (requestedHour < 1 || requestedHour > 12) {
         throw new BadRequestException('Booking display time is invalid.');
       }
-      requestedHour = meridiem.toUpperCase() === 'AM'
-        ? (requestedHour === 12 ? 0 : requestedHour)
-        : (requestedHour === 12 ? 12 : requestedHour + 12);
+      requestedHour =
+        meridiem.toUpperCase() === 'AM'
+          ? requestedHour === 12
+            ? 0
+            : requestedHour
+          : requestedHour === 12
+            ? 12
+            : requestedHour + 12;
     } else if (requestedHour > 23) {
       throw new BadRequestException('Booking display time is invalid.');
     }
@@ -871,7 +1078,8 @@ export class BookingService {
         minute: '2-digit',
         hourCycle: 'h23',
       }).formatToParts(startDate);
-      const value = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value;
+      const value = (type: Intl.DateTimeFormatPartTypes) =>
+        parts.find((part) => part.type === type)?.value;
       if (
         value('year') !== year ||
         value('month') !== month ||
@@ -879,11 +1087,15 @@ export class BookingService {
         Number(value('hour')) !== requestedHour ||
         Number(value('minute')) !== requestedMinute
       ) {
-        throw new BadRequestException('Booking timestamp does not match the selected local date and time.');
+        throw new BadRequestException(
+          'Booking timestamp does not match the selected local date and time.',
+        );
       }
     } catch (error) {
       if (error instanceof BadRequestException) throw error;
-      throw new BadRequestException('A valid IANA time zone is required for the booking.');
+      throw new BadRequestException(
+        'A valid IANA time zone is required for the booking.',
+      );
     }
   }
 }

@@ -3,6 +3,7 @@ import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentCustomer } from '../../common/decorators/current-customer.decorator';
 import { SessionService } from './session.service';
+import { CheckInDto } from './dto/check-in.dto';
 
 @ApiTags('Sessions')
 @ApiBearerAuth('customer-jwt')
@@ -27,7 +28,7 @@ export class SessionController {
   @ApiOperation({ summary: 'Check in to session using booking ID' })
   checkIn(
     @CurrentCustomer() customer: any,
-    @Body() body: { bookingId: string },
+    @Body() body: CheckInDto,
   ) {
     return this.sessionService.checkIn(customer.id, body.bookingId);
   }

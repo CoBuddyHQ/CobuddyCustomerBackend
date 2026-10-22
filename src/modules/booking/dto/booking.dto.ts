@@ -1,5 +1,13 @@
 import {
-  IsString, IsNotEmpty, IsOptional, IsNumber, IsDateString, Min, Max, IsBoolean, IsIn,
+  IsString,
+  IsNotEmpty,
+  IsOptional,
+  IsNumber,
+  IsDateString,
+  Min,
+  Max,
+  IsBoolean,
+  IsIn,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
@@ -108,7 +116,10 @@ export class CreateBookingDto {
   @Max(8)
   durationHours!: number;
 
-  @ApiProperty({ example: true, description: 'Customer confirmed the booking safety agreement.' })
+  @ApiProperty({
+    example: true,
+    description: 'Customer confirmed the booking safety agreement.',
+  })
   @IsBoolean()
   @IsIn([true])
   safetyAcknowledged!: true;
@@ -117,7 +128,6 @@ export class CreateBookingDto {
   @IsString()
   @IsOptional()
   specialInstructions?: string;
-
 }
 
 export class BookingPriceQuoteDto {
@@ -169,6 +179,19 @@ export class ModifyBookingDto {
   @IsDateString()
   @IsOptional()
   date?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Scheduled start instant matching the selected local date/time.',
+  })
+  @IsDateString()
+  @IsOptional()
+  scheduledStart?: string;
+
+  @ApiPropertyOptional({ example: 'Asia/Kolkata' })
+  @IsString()
+  @IsOptional()
+  timeZone?: string;
 
   @ApiPropertyOptional()
   @IsString()

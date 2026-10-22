@@ -155,11 +155,10 @@ export class AccountService {
   }
 
   async submitReactivationRequest(data: { phone?: string; email?: string; reason?: string }) {
-    return {
-      success: true,
-      message: 'Your request to reactivate your account has been submitted successfully. Our team will review it within 24 hours.',
-      submittedAt: new Date().toISOString(),
-    };
+    void data;
+    throw new ServiceUnavailableException(
+      'Reactivation review is not connected. No request was recorded.',
+    );
   }
 
   // ── CHANGE MOBILE NUMBER (2-STEP OTP VERIFICATION) ────────────────────────

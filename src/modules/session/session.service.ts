@@ -5,7 +5,6 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { randomInt } from 'crypto';
 
 @Injectable()
 export class SessionService {
@@ -32,97 +31,82 @@ export class SessionService {
   }
 
   async getCurrentSession(customerId: string) {
-    const session = await this.prisma.customerSession.findFirst({
+    const active = await this.prisma.customerSession.findFirst({
       where: {
         customerId,
-        status: { in: ['upcoming', 'pre_arrival', 'checked_in', 'active', 'extending'] as any },
+        status: { in: ['checked_in', 'active', 'extending'] },
       },
       include: { booking: true },
       orderBy: { createdAt: 'desc' },
+    });
+    const session = active ?? await this.prisma.customerSession.findFirst({
+      where: { customerId, status: { in: ['upcoming', 'pre_arrival'] } },
+      include: { booking: true },
+      orderBy: { booking: { date: 'asc' } },
     });
     if (!session) return null;
     return this.toSessionResponse(session);
   }
 
   async checkIn(customerId: string, bookingId: string) {
-    // Accept both 'accepted' and 'confirmed' status
     const booking = await this.prisma.customerBooking.findFirst({
-      where: { id: bookingId, customerId, status: { in: ['accepted', 'confirmed'] } },
+      where: { id: bookingId, customerId, status: { in: ['accepted', 'confirmed', 'in_progress'] } },
     });
     if (!booking) throw new NotFoundException('No accepted booking found for check-in');
 
-    // SECURITY: passCode is ALWAYS server-generated — never accept from client
-    const securePassCode = String(randomInt(1000, 10000));
-
     const durationMins = Math.round(Number(booking.durationHours || 1) * 60);
+    const session = await this.prisma.$transaction(async (tx) => {
+      const existing = await tx.customerSession.findUnique({
+        where: { bookingId_customerId: { bookingId, customerId } as any },
+        include: { booking: true },
+      });
+      if (!existing?.passCode) {
+        throw new ServiceUnavailableException(
+          'The Companion Backend session pass is unavailable. Check-in was not recorded.',
+        );
+      }
+      if (['checked_in', 'active', 'extending'].includes(existing.status)) {
+        return existing;
+      }
+      if (!['upcoming', 'pre_arrival'].includes(existing.status)) {
+        throw new BadRequestException('This session is not available for check-in.');
+      }
 
-    const session = await this.prisma.customerSession.upsert({
-      where: { bookingId_customerId: { bookingId, customerId } as any },
-      create: {
-        bookingId,
-        customerId,
-        companionId: booking.companionId,
-        status: 'checked_in',
-        checkInTime: new Date(),
-        passCode: securePassCode,
-        totalMinutes: durationMins,
-      },
-      update: {
-        status: 'checked_in',
-        checkInTime: new Date(),
-        totalMinutes: durationMins,
-      },
-      include: { booking: true },
-    });
-
-    await this.prisma.customerBooking.update({
-      where: { id: bookingId },
-      data: { status: 'in_progress' },
+      const updated = await tx.customerSession.update({
+        where: { id: existing.id },
+        data: {
+          status: 'checked_in',
+          checkInTime: new Date(),
+          totalMinutes: durationMins,
+        },
+        include: { booking: true },
+      });
+      await tx.customerBooking.update({
+        where: { id: bookingId },
+        data: { status: 'in_progress' },
+      });
+      return updated;
     });
 
     return this.toSessionResponse(session);
   }
 
   async extendSession(customerId: string, sessionId: string, extraMinutes: number) {
-    const session = await this.prisma.customerSession.findFirst({
-      where: { id: sessionId, customerId, status: { in: ['active', 'checked_in', 'extending'] as any } },
-    });
-    if (!session) throw new NotFoundException('Active session not found');
-
-    const updated = await this.prisma.customerSession.update({
-      where: { id: sessionId },
-      data: { extensionMinutes: { increment: extraMinutes } },
-      include: { booking: true },
-    });
-    return this.toSessionResponse(updated);
+    void customerId;
+    void sessionId;
+    void extraMinutes;
+    throw new ServiceUnavailableException(
+      'Session extensions require Companion approval and payment processing. No duration change was applied.',
+    );
   }
 
   async endSession(customerId: string, sessionId: string, tip?: number) {
-    const ACTIVE_STATUSES = ['checked_in', 'active', 'extending'];
-    const session = await this.prisma.customerSession.findFirst({
-      where: { id: sessionId, customerId, status: { in: ACTIVE_STATUSES as any } },
-    });
-    if (!session) throw new NotFoundException('No active session found to end');
-
-    const updated = await this.prisma.customerSession.update({
-      where: { id: sessionId },
-      data: {
-        status: 'completed',
-        checkOutTime: new Date(),
-        tipAmount: tip ?? 0,
-      },
-      include: { booking: true },
-    });
-
-    // Update booking status to completed
-    if (session.bookingId) {
-      await this.prisma.customerBooking.update({
-        where: { id: session.bookingId },
-        data: { status: 'completed', completedAt: new Date() },
-      });
-    }
-
-    return this.toSessionResponse(updated);
+    void customerId;
+    void sessionId;
+    void tip;
+    throw new ServiceUnavailableException(
+      'Session completion must be recorded by the Companion Backend. This request did not change session or booking state.',
+    );
   }
 
   async listSessionHistory(customerId: string) {
@@ -162,9 +146,9 @@ export class SessionService {
 
   async submitFeedback(customerId: string, sessionId: string, sentiment: 'up' | 'down', tags: string[]) {
     const session = await this.prisma.customerSession.findFirst({
-      where: { id: sessionId, customerId },
+      where: { id: sessionId, customerId, status: 'completed' },
     });
-    if (!session) throw new NotFoundException('Session not found');
+    if (!session) throw new NotFoundException('Completed session not found');
 
     await this.prisma.customerSessionFeedback.upsert({
       where: { sessionId },
