@@ -14,8 +14,8 @@ export class AppController {
       await this.prisma.$queryRaw`SELECT 1`;
       dbStatus = 'connected';
       isHealthy = true;
-    } catch (err: any) {
-      dbStatus = `error: ${err.message || 'database unreachable'}`;
+    } catch {
+      dbStatus = 'disconnected';
     }
 
     const payload = {

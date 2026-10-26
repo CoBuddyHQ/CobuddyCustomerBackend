@@ -39,6 +39,12 @@ export class SessionController {
     return this.sessionService.getSessionPass(customer.id, id);
   }
 
+  @Get(':id')
+  @ApiOperation({ summary: 'Get session by id' })
+  getSessionById(@CurrentCustomer() customer: any, @Param('id') id: string) {
+    return this.sessionService.getSessionById(customer.id, id);
+  }
+
   @Patch(':id/extend')
   @ApiOperation({ summary: 'Extend active session' })
   extend(

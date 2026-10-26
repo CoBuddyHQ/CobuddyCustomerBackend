@@ -316,4 +316,76 @@ export class CompanionClientService {
     }
     return response.json();
   }
+
+  // ── POST /api/v1/internal/companions/:id/reviews ───────────────────────────
+  async syncReviewToCompanion(companionId: string, payload: any) {
+    const correlationId = crypto.randomUUID();
+    const endpoint = `${this.companionApiUrl}/api/v1/internal/companions/${encodeURIComponent(companionId)}/reviews`;
+    try {
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: this.getHeaders(correlationId),
+        body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(5000),
+      });
+      if (!res.ok) {
+        this.logger.warn(
+          `[CompanionClient] [${correlationId}] Failed to sync review to companion: ${res.status}`,
+        );
+      }
+      return await res.json().catch(() => ({}));
+    } catch (e: any) {
+      this.logger.warn(
+        `[CompanionClient] [${correlationId}] Error syncing review to companion: ${e.message}`,
+      );
+    }
+  }
+
+  // ── POST /api/internal/bookings/sync (Admin Backend) ───────────────────────
+  async syncBookingToAdmin(payload: any) {
+    const correlationId = crypto.randomUUID();
+    const endpoint = `${this.adminApiUrl}/api/internal/bookings/sync`;
+    try {
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: this.getHeaders(correlationId),
+        body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(5000),
+      });
+      if (!res.ok) {
+        this.logger.warn(
+          `[CompanionClient] [${correlationId}] Failed to sync booking to admin: ${res.status}`,
+        );
+      }
+      return await res.json().catch(() => ({}));
+    } catch (e: any) {
+      this.logger.warn(
+        `[CompanionClient] [${correlationId}] Error syncing booking to admin: ${e.message}`,
+      );
+    }
+  }
+
+  // ── POST /api/internal/reviews/sync (Admin Backend) ────────────────────────
+  async syncReviewToAdmin(payload: any) {
+    const correlationId = crypto.randomUUID();
+    const endpoint = `${this.adminApiUrl}/api/internal/reviews/sync`;
+    try {
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: this.getHeaders(correlationId),
+        body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(5000),
+      });
+      if (!res.ok) {
+        this.logger.warn(
+          `[CompanionClient] [${correlationId}] Failed to sync review to admin: ${res.status}`,
+        );
+      }
+      return await res.json().catch(() => ({}));
+    } catch (e: any) {
+      this.logger.warn(
+        `[CompanionClient] [${correlationId}] Error syncing review to admin: ${e.message}`,
+      );
+    }
+  }
 }

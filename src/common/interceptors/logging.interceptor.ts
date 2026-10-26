@@ -21,16 +21,22 @@ export class LoggingInterceptor implements NestInterceptor {
     const ctx = context.switchToHttp();
     const request = ctx.getRequest<Request>();
     const response = ctx.getResponse<Response>();
+    const url = request?.originalUrl || request?.url || '';
+    const isHealthCheck = url === '/health' || url === '/api/v1/health';
     const metadata = httpLogMetadata(request);
     const startedAt = Date.now();
 
-    this.logger.log(`[REQ] ${metadata}`);
+    if (!isHealthCheck) {
+      this.logger.log(`[REQ] ${metadata}`);
+    }
 
     return next.handle().pipe(
       tap(() => {
-        this.logger.log(
-          `[RES] ${metadata} ${response.statusCode} ${Date.now() - startedAt}ms`,
-        );
+        if (!isHealthCheck) {
+          this.logger.log(
+            `[RES] ${metadata} ${response.statusCode} ${Date.now() - startedAt}ms`,
+          );
+        }
       }),
     );
   }

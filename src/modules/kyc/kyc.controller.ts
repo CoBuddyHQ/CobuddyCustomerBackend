@@ -1,11 +1,14 @@
 import {
   Controller, Get, Post, Body, UseGuards, UseInterceptors, UploadedFile, UploadedFiles,
-  BadRequestException,
+  BadRequestException, Param, Res,
 } from '@nestjs/common';
 import { FileInterceptor, FileFieldsInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
 import { randomUUID } from 'crypto';
+import { join } from 'path';
+import type { Response } from 'express';
+import { validateUpload } from '../../common/utils/upload-content.util';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiConsumes } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentCustomer } from '../../common/decorators/current-customer.decorator';
@@ -41,6 +44,16 @@ const livenessFileFilter = (_req: any, file: any, callback: any) => {
 export class KycController {
   constructor(private readonly kycService: KycService) {}
 
+  @Get('files/:folder/:filename')
+  async getFile(@CurrentCustomer() customer: any, @Param('folder') folder: string,
+    @Param('filename') filename: string, @Res() res: Response) {
+    await this.kycService.authorizeFile(customer.id, folder, filename);
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Content-Disposition', 'attachment');
+    res.sendFile(join(process.cwd(), 'uploads', 'kyc', folder, filename));
+  }
+
   @Get('status')
   @ApiOperation({ summary: 'Get KYC verification status' })
   getStatus(@CurrentCustomer() customer: any) {
@@ -67,12 +80,14 @@ export class KycController {
   ) {
     const front = files?.frontDoc?.[0];
     const back = files?.backDoc?.[0];
+    validateUpload(front, true);
+    if (back) validateUpload(back, true);
     if (!front) throw new BadRequestException('A real front document image is required.');
     const rawType = (dto.docType || dto.documentType || '').toUpperCase();
     const requiresBack = ['AADHAAR', 'DL', 'DRIVING_LICENSE', 'VOTER_ID'].includes(rawType);
     if (requiresBack && !back) throw new BadRequestException('A real back document image is required.');
-    const frontDocUrl = `/uploads/kyc/documents/${front.filename}`;
-    const backDocUrl = back ? `/uploads/kyc/documents/${back.filename}` : undefined;
+    const frontDocUrl = `/api/v1/kyc/files/documents/${front.filename}`;
+    const backDocUrl = back ? `/api/v1/kyc/files/documents/${back.filename}` : undefined;
     return this.kycService.submitDocument(customer.id, dto, frontDocUrl, backDocUrl);
   }
 
@@ -91,7 +106,8 @@ export class KycController {
     @UploadedFile() file: any,
   ) {
     if (!file?.filename) throw new BadRequestException('A real selfie image file is required.');
-    const selfieUrl = `/uploads/kyc/selfies/${file.filename}`;
+    validateUpload(file, true);
+    const selfieUrl = `/api/v1/kyc/files/selfies/${file.filename}`;
     return this.kycService.submitSelfie(customer.id, selfieUrl);
   }
 
@@ -110,7 +126,8 @@ export class KycController {
     @UploadedFile() file: any,
   ) {
     if (!file?.filename) throw new BadRequestException('A real liveness video file is required.');
-    const livenessUrl = `/uploads/kyc/liveness/${file.filename}`;
+    validateUpload(file);
+    const livenessUrl = `/api/v1/kyc/files/liveness/${file.filename}`;
     return this.kycService.submitLiveness(customer.id, livenessUrl);
   }
 

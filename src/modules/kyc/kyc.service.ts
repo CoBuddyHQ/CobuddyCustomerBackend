@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException, Logger } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SubmitKycDocumentDto } from './dto/kyc.dto';
 
@@ -7,6 +7,17 @@ export class KycService {
   private readonly logger = new Logger(KycService.name);
 
   constructor(private prisma: PrismaService) {}
+
+  async authorizeFile(customerId: string, folder: string, filename: string) {
+    if (!['documents', 'selfies', 'liveness'].includes(folder) ||
+      !/^[a-f0-9-]{36}\.(jpe?g|png|mp4|mov)$/i.test(filename)) {
+      throw new NotFoundException('Document not found');
+    }
+    const record = await this.prisma.customerKyc.findUnique({ where: { customerId } });
+    const urls = record ? [record.frontDocUrl, record.backDocUrl, record.selfieUrl, record.livenessUrl] : [];
+    if (!urls.includes(`/api/v1/kyc/files/${folder}/${filename}`) &&
+      !urls.includes(`/uploads/kyc/${folder}/${filename}`)) throw new NotFoundException('Document not found');
+  }
 
   async getStatus(customerId: string) {
     const kyc = await this.prisma.customerKyc.findUnique({
@@ -133,7 +144,7 @@ export class KycService {
       create: { customerId, selfieUrl, status: 'pending', submittedAt: new Date() },
       update: { selfieUrl },
     });
-    return { message: 'Selfie uploaded', kyc };
+    return { message: 'Selfie uploaded', kyc: { ...kyc, docNumber: kyc.docNumber ? '****' : null } };
   }
 
   async submitLiveness(customerId: string, livenessUrl?: string) {

@@ -171,12 +171,13 @@ export class AuthService {
       throw new UnauthorizedException('Invalid or expired refresh token');
     }
 
-    if (tokenRecord.customer.accountStatus === 'deleted') {
-      throw new UnauthorizedException('Account no longer exists');
+    if (['deleted', 'suspended', 'deactivated'].includes(tokenRecord.customer.accountStatus)) {
+      throw new UnauthorizedException('Account is not active');
     }
 
     // Rotate refresh token
-    await this.prisma.customerRefreshToken.delete({ where: { token: refreshToken } });
+    const consumed = await this.prisma.customerRefreshToken.deleteMany({ where: { token: refreshToken } });
+    if (consumed.count !== 1) throw new UnauthorizedException('Refresh token already used');
 
     const tokens = await this.generateTokens(
       tokenRecord.customer.id,

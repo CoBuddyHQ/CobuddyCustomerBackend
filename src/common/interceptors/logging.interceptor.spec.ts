@@ -17,6 +17,8 @@ describe('HTTP logging sensitive-data handling', () => {
     'logs metadata without request/response values in %s',
     async (environment) => {
       const original = process.env.NODE_ENV;
+      const verbose = process.env.DEV_VERBOSE_PAYLOAD_LOGGING;
+      process.env.DEV_VERBOSE_PAYLOAD_LOGGING = 'true';
       process.env.NODE_ENV = environment;
       const log = jest.spyOn(Logger.prototype, 'log').mockImplementation();
       const response = {
@@ -49,6 +51,8 @@ describe('HTTP logging sensitive-data handling', () => {
         expect(lines).toContain('201');
         expect(lines).not.toMatch(/secret-|Body:|Query:|Res:|IP:/);
       } finally {
+        if (verbose === undefined) delete process.env.DEV_VERBOSE_PAYLOAD_LOGGING;
+        else process.env.DEV_VERBOSE_PAYLOAD_LOGGING = verbose;
         if (original === undefined) delete process.env.NODE_ENV;
         else process.env.NODE_ENV = original;
       }

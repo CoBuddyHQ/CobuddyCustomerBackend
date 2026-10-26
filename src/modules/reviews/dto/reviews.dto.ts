@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsNumber, IsOptional, Min, Max } from 'class-validator';
+import { IsString, IsNotEmpty, IsNumber, IsOptional, IsArray, Min, Max } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateReviewDto {
@@ -27,6 +27,12 @@ export class CreateReviewDto {
   @IsString()
   @IsOptional()
   text?: string;
+
+  @ApiPropertyOptional({ isArray: true })
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  tags?: string[];
 
   @ApiPropertyOptional({ example: 5 })
   @IsNumber()

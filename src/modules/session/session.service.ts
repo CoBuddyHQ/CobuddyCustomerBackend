@@ -39,12 +39,16 @@ export class SessionService {
       include: { booking: true },
       orderBy: { createdAt: 'desc' },
     });
-    const session = active ?? await this.prisma.customerSession.findFirst({
-      where: { customerId, status: { in: ['upcoming', 'pre_arrival'] } },
+    if (!active) return null;
+    return this.toSessionResponse(active);
+  }
+
+  async getSessionById(customerId: string, sessionId: string) {
+    const session = await this.prisma.customerSession.findFirst({
+      where: { id: sessionId, customerId },
       include: { booking: true },
-      orderBy: { booking: { date: 'asc' } },
     });
-    if (!session) return null;
+    if (!session) throw new NotFoundException('Session not found');
     return this.toSessionResponse(session);
   }
 

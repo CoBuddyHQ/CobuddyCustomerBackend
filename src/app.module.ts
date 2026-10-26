@@ -34,6 +34,9 @@ import { AppController } from './app.controller';
     ServeStaticModule.forRoot({
       rootPath: join(process.cwd(), 'uploads', 'public'),
       serveRoot: '/uploads/public',
+    }, {
+      rootPath: join(process.cwd(), 'uploads', 'profiles'),
+      serveRoot: '/uploads/profiles',
     }),
     PrismaModule,
     AuthModule,

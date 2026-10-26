@@ -51,7 +51,65 @@ export class DiscoveryService {
   }
 
   async getCompanionDetail(companionId: string) {
-    return this.fetchCompanionDetailFromService(companionId);
+    const profile = await this.fetchCompanionDetailFromService(companionId);
+
+    try {
+      const localReviews = await this.prisma.customerReview.findMany({
+        where: { companionId, isPublic: true },
+        include: { customer: { select: { name: true } }, booking: true },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      if (localReviews.length > 0) {
+        const totalRating = localReviews.reduce((sum, r) => sum + r.rating, 0);
+        const avg = Number((totalRating / localReviews.length).toFixed(1));
+
+        const existingItems = profile.reviews?.items || [];
+        const localItems = localReviews.map((r) => ({
+          id: r.id,
+          author: r.customer?.name
+            ? `${r.customer.name.slice(0, 2)}.`.toUpperCase()
+            : 'Customer',
+          date: r.createdAt
+            ? new Date(r.createdAt).toLocaleDateString('en-GB', {
+                day: 'numeric',
+                month: 'short',
+                year: 'numeric',
+              })
+            : 'Recent',
+          activity: r.booking?.activityName || 'Experience',
+          text: r.comment || '',
+          rating: r.rating,
+          highlights: r.tags || [],
+        }));
+
+        const existingIds = new Set(existingItems.map((i: any) => i.id));
+        const combinedItems = [
+          ...existingItems,
+          ...localItems.filter((i) => !existingIds.has(i.id)),
+        ];
+
+        profile.reviews = {
+          average:
+            profile.reviews && profile.reviews.count > 0
+              ? profile.reviews.average
+              : avg,
+          count: Math.max(profile.reviews?.count || 0, combinedItems.length),
+          categories: profile.reviews?.categories || {
+            punctuality: 5.0,
+            communication: 5.0,
+            behavior: 4.9,
+          },
+          items: combinedItems,
+        };
+        profile.rating = profile.reviews.average;
+        profile.totalReviews = profile.reviews.count;
+      }
+    } catch {
+      // Safe fallback to profile
+    }
+
+    return profile;
   }
 
   async getFavorites(customerId: string) {

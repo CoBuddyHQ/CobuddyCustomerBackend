@@ -234,6 +234,7 @@ export class BookingService {
           iconColor: '#D4AF37',
           route: 'BookingDetailScreen',
           stack: 'BookingsTab',
+          routeParams: { bookingId: created.id },
         },
       });
 
@@ -246,6 +247,44 @@ export class BookingService {
     // the request when the cross-service call failed.
     const companionRequestStatus =
       await this.notifyCompanionBackendOfNewBooking(booking, customerId);
+
+    // S2S Sync to Admin Backend
+    if (this.companionClient) {
+      const client = this.companionClient;
+      const calcDurationMs = (booking.durationHours || 1) * 60 * 60 * 1000;
+      const calcEndDate = new Date(startDate.getTime() + calcDurationMs);
+      this.prisma.customer
+        .findUnique({
+          where: { id: customerId },
+          select: { name: true, phone: true },
+        })
+        .then((customer) => {
+          client.syncBookingToAdmin({
+            bookingId: booking.id,
+            bookingRef: booking.bookingRef,
+            customerId,
+            customerName: customer?.name || 'Customer',
+            customerPhone: customer?.phone,
+            companionId: booking.companionId,
+            companionName: booking.companionName,
+            activityName: booking.activityName,
+            venueName: booking.venueName,
+            venueAddress: booking.venueAddress,
+            venueArea: booking.venueArea,
+            venueCity: booking.venueCity,
+            startTime: startDate.toISOString(),
+            endTime: calcEndDate.toISOString(),
+            durationMins: Math.round((booking.durationHours || 1) * 60),
+            status: 'pending',
+            bookingAmount: booking.totalAmount,
+            platformFeeAmount: booking.platformFee,
+            companionNetAmount: booking.baseTotal,
+            paymentStatus: booking.paymentStatus,
+          }).catch(() => {});
+        })
+        .catch(() => {});
+    }
+
     return {
       ...this.buildBookingResponse(booking),
       companionRequestStatus: companionRequestStatus ? 'sent' : 'unavailable',
@@ -371,6 +410,17 @@ export class BookingService {
         cancelledAt: new Date(),
       },
     });
+
+    // S2S Sync cancellation to Admin Backend
+    if (this.companionClient) {
+      this.companionClient
+        .syncBookingToAdmin({
+          bookingId,
+          status: 'cancelled',
+          cancelReason: dto.reason,
+        })
+        .catch(() => {});
+    }
 
     // Process wallet refund ONLY if booking was actually paid
     const response = this.buildBookingResponse(updated);
@@ -677,6 +727,15 @@ export class BookingService {
     }
 
     const status = dto.status.toLowerCase();
+    if (status === booking.status) {
+      // Replays must not create duplicate notifications or reset session timestamps.
+      await this.companionClient?.syncBookingToAdmin({ bookingId, status });
+      return { success: true, duplicate: true, booking: this.buildBookingResponse(booking) };
+    }
+    if (['completed', 'cancelled', 'declined'].includes(booking.status) ||
+      (['confirmed', 'in_progress'].includes(booking.status) && ['accepted', 'counter_proposed'].includes(status))) {
+      return { success: true, ignored: true, booking: this.buildBookingResponse(booking) };
+    }
     const effectivePassCode = dto.sessionPassCode || dto.passCode;
     if (status === 'accepted') {
       if (!effectivePassCode) {
@@ -686,7 +745,7 @@ export class BookingService {
       }
       await this.prisma.$transaction(async (tx) => {
         await tx.customerBooking.update({
-          where: { id: bookingId },
+          where: { id: bookingId, status: booking.status },
           data: {
             status: 'accepted',
             acceptedAt: new Date(),
@@ -716,13 +775,14 @@ export class BookingService {
         await tx.customerNotification.create({
           data: {
             customerId: booking.customerId,
-          title: 'Booking Accepted! ✓',
-          description: `Your booking request has been accepted by ${booking.companionName || 'your companion'}. Your session pass is available in the app.`,
+            title: 'Booking Accepted! ✓',
+            description: `Your booking request has been accepted by ${booking.companionName || 'your companion'}. Your session pass is available in the app.`,
             category: 'booking',
             icon: 'calendar-check',
             iconColor: '#27AE60',
-            route: 'ActiveSessionScreen',
+            route: 'BookingDetailScreen',
             stack: 'BookingsTab',
+            routeParams: { bookingId: booking.id, status: 'accepted' },
           },
         });
       });
@@ -730,7 +790,7 @@ export class BookingService {
     } else if (status === 'declined') {
       await this.prisma.$transaction(async (tx) => {
         await tx.customerBooking.update({
-          where: { id: bookingId },
+          where: { id: bookingId, status: booking.status },
           data: {
             status: 'declined',
             declineReason: dto.reason || 'Companion was unavailable',
@@ -747,6 +807,7 @@ export class BookingService {
             iconColor: '#E74C3C',
             route: 'BookingDetailScreen',
             stack: 'BookingsTab',
+            routeParams: { bookingId: booking.id, status: 'declined' },
           },
         });
       });
@@ -757,7 +818,7 @@ export class BookingService {
       const counterStart = dto.newStart ? new Date(dto.newStart) : undefined;
       await this.prisma.$transaction(async (tx) => {
         await tx.customerBooking.update({
-          where: { id: bookingId },
+          where: { id: bookingId, status: booking.status },
           data: {
             status: 'counter_proposed',
             counterDate: counterStart,
@@ -780,8 +841,13 @@ export class BookingService {
             category: 'booking',
             icon: 'clock-edit',
             iconColor: '#F39C12',
-            route: 'BookingDetailScreen',
-            stack: 'BookingsTab',
+            route: 'BookingCounterOfferScreen',
+            stack: 'BookingFlowStack',
+            routeParams: {
+              bookingId: booking.id,
+              companionName: booking.companionName,
+              companionId: booking.companionId,
+            },
           },
         });
       });
@@ -789,7 +855,7 @@ export class BookingService {
     } else if (status === 'in_progress' || status === 'active') {
       await this.prisma.$transaction(async (tx) => {
         await tx.customerBooking.update({
-          where: { id: bookingId },
+          where: { id: bookingId, status: booking.status },
           data: { status: 'in_progress' },
         });
 
@@ -810,7 +876,12 @@ export class BookingService {
             icon: 'account-clock',
             iconColor: '#3498DB',
             route: 'ActiveSessionScreen',
-            stack: 'BookingsTab',
+            stack: 'LiveSessionStack',
+            routeParams: {
+              bookingId: booking.id,
+              companionId: booking.companionId,
+              companionName: booking.companionName,
+            },
           },
         });
       });
@@ -818,7 +889,7 @@ export class BookingService {
     } else if (status === 'completed') {
       await this.prisma.$transaction(async (tx) => {
         await tx.customerBooking.update({
-          where: { id: bookingId },
+          where: { id: bookingId, status: booking.status },
           data: { status: 'completed', completedAt: new Date() },
         });
 
@@ -838,8 +909,13 @@ export class BookingService {
             category: 'session',
             icon: 'star',
             iconColor: '#F39C12',
-            route: 'SessionFeedbackScreen',
-            stack: 'BookingsTab',
+            route: 'CompanionReviewScreen',
+            stack: 'LiveSessionStack',
+            routeParams: {
+              bookingId: booking.id,
+              companionId: booking.companionId,
+              companionName: booking.companionName,
+            },
           },
         });
       });
@@ -847,7 +923,7 @@ export class BookingService {
     } else if (status === 'cancelled') {
       await this.prisma.$transaction(async (tx) => {
         await tx.customerBooking.update({
-          where: { id: bookingId },
+          where: { id: bookingId, status: booking.status },
           data: {
             status: 'cancelled',
             cancelReason: dto.reason || 'Cancelled by companion',
@@ -870,10 +946,24 @@ export class BookingService {
             iconColor: '#E74C3C',
             route: 'BookingDetailScreen',
             stack: 'BookingsTab',
+            routeParams: { bookingId: booking.id, status: 'cancelled' },
           },
         });
       });
       this.logger.log(`[S2S] Booking ${bookingId} transitioned to cancelled`);
+    }
+
+    // S2S Sync to Admin Backend on every status change
+    if (this.companionClient) {
+      await this.companionClient
+        .syncBookingToAdmin({
+          bookingId,
+          status,
+          cancelReason: dto.reason,
+        })
+        .catch((err) => {
+          this.logger.warn(`Failed S2S admin booking sync: ${err.message}`);
+        });
     }
 
     const updated = await this.prisma.customerBooking.findUnique({
