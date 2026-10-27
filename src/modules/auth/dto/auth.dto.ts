@@ -22,7 +22,7 @@ export class VerifyOtpDto {
   @ApiProperty({ example: '123456' })
   @IsString()
   @IsNotEmpty()
-  @Length(6, 6)
+  @Length(6, 8)
   otp: string;
 }
 

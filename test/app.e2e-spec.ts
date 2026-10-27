@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe, RequestMethod } from '@nestjs/common';
+import { randomBytes } from 'crypto';
 import request from 'supertest';
 import { AppModule } from './../src/app.module';
 import { ResponseInterceptor } from '../src/common/interceptors/response.interceptor';
@@ -7,8 +8,12 @@ import { HttpExceptionFilter } from '../src/common/filters/http-exception.filter
 
 describe('CoBuddy Customer API (e2e)', () => {
   let app: INestApplication;
+  const internalServiceToken = randomBytes(32).toString('hex');
 
   beforeAll(async () => {
+    process.env.INTERNAL_SERVICE_SECRET = internalServiceToken;
+    process.env.INTERNAL_SERVICE_TOKEN = internalServiceToken;
+
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();
@@ -21,8 +26,12 @@ describe('CoBuddy Customer API (e2e)', () => {
     app.useGlobalFilters(new HttpExceptionFilter());
     app.useGlobalInterceptors(new ResponseInterceptor());
 
+    process.env.OTP_TEST_BYPASS_ENABLED = 'true';
+    process.env.OTP_TEST_ALLOWED_PHONES = '919876543210,9876543210';
+
     await app.init();
   });
+
 
   afterAll(async () => {
     await app.close();
@@ -91,5 +100,30 @@ describe('CoBuddy Customer API (e2e)', () => {
         expect(res.body.success).toBe(true);
         expect(res.body.data).toHaveProperty('message');
       });
+  });
+
+  describe('S2S Internal Bookings API', () => {
+    it('rejects internal status update when x-internal-token header is missing', () => {
+      return request(app.getHttpServer())
+        .post('/api/v1/internal/bookings/test-id/status-update')
+        .send({ status: 'accepted', passCode: 'CO-123' })
+        .expect(401);
+    });
+
+    it('rejects internal status update when x-internal-token header is invalid', () => {
+      return request(app.getHttpServer())
+        .post('/api/v1/internal/bookings/test-id/status-update')
+        .set('x-internal-token', 'wrong-token')
+        .send({ status: 'accepted', passCode: 'CO-123' })
+        .expect(401);
+    });
+
+    it('returns 404 for non-existent booking with valid token', () => {
+      return request(app.getHttpServer())
+        .post('/api/v1/internal/bookings/non-existent-booking-id/status-update')
+        .set('x-internal-token', internalServiceToken)
+        .send({ status: 'accepted', passCode: 'CO-123' })
+        .expect(404);
+    });
   });
 });

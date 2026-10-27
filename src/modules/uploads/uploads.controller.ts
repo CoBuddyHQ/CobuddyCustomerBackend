@@ -21,6 +21,7 @@ import { ApiTags, ApiBearerAuth, ApiOperation, ApiConsumes } from '@nestjs/swagg
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentCustomer } from '../../common/decorators/current-customer.decorator';
 import { UploadsService } from './uploads.service';
+import { validateUpload } from '../../common/utils/upload-content.util';
 
 // ── ALLOWED TYPES ──────────────────────────────────────────────────────────────
 const ALLOWED_MIME_TYPES = [
@@ -84,7 +85,7 @@ export class UploadsController {
     FileInterceptor('file', {
       storage: diskStorage({
         destination: (req: any, file: any, cb: any) => {
-          const isPrivate = req.query?.isPrivate === 'true' || req.body?.isPrivate === 'true';
+          const isPrivate = req.query?.isPrivate === 'true';
           cb(null, isPrivate ? './uploads/private' : './uploads/public');
         },
         filename: (req: any, file: any, cb: any) => {
@@ -115,6 +116,7 @@ export class UploadsController {
     if (!file) {
       throw new BadRequestException('No file provided or invalid file format');
     }
+    validateUpload(file);
 
     // ── MAGIC-BYTES VERIFICATION ──────────────────────────────────────────────
     // Client-supplied MIME cannot be trusted; read actual file bytes.

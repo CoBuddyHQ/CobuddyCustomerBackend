@@ -13,6 +13,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
 import { randomUUID } from 'crypto';
+import { validateUpload } from '../../common/utils/upload-content.util';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiConsumes } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentCustomer } from '../../common/decorators/current-customer.decorator';
@@ -90,6 +91,7 @@ export class ProfileController {
     }),
   )
   uploadPhoto(@CurrentCustomer() customer: any, @UploadedFile() file: any) {
+    validateUpload(file, true);
     const photoUrl = `/uploads/profiles/${file.filename}`;
     return this.profileService.updatePhoto(customer.id, photoUrl);
   }

@@ -1,5 +1,18 @@
-import { Controller, Get, Post, Delete, Param, Query, UseGuards } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth, ApiOperation, ApiQuery } from '@nestjs/swagger';
+import {
+  Controller,
+  Get,
+  Post,
+  Delete,
+  Param,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
+import {
+  ApiTags,
+  ApiBearerAuth,
+  ApiOperation,
+  ApiQuery,
+} from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { OptionalJwtAuthGuard } from '../auth/guards/optional-jwt-auth.guard';
 import { CurrentCustomer } from '../../common/decorators/current-customer.decorator';
@@ -17,6 +30,16 @@ export class DiscoveryController {
   @ApiOperation({ summary: 'Get Customer Home dashboard aggregated data' })
   getHomeData(@CurrentCustomer() customer: any) {
     return this.discoveryService.getHomeData(customer?.id);
+  }
+
+  @Get('campaigns')
+  @UseGuards(OptionalJwtAuthGuard)
+  @ApiBearerAuth('customer-jwt')
+  @ApiOperation({
+    summary: 'Get active marketing campaigns and promotional announcements',
+  })
+  getCampaigns(@CurrentCustomer() customer: { id: string } | null) {
+    return this.discoveryService.getCampaigns(customer?.id);
   }
 
   @Get('companions')
@@ -54,7 +77,10 @@ export class DiscoveryController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('customer-jwt')
   @ApiOperation({ summary: 'Add companion to favorites' })
-  addFavorite(@CurrentCustomer() customer: any, @Param('companionId') companionId: string) {
+  addFavorite(
+    @CurrentCustomer() customer: any,
+    @Param('companionId') companionId: string,
+  ) {
     return this.discoveryService.addFavorite(customer.id, companionId);
   }
 
@@ -62,18 +88,25 @@ export class DiscoveryController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('customer-jwt')
   @ApiOperation({ summary: 'Remove companion from favorites' })
-  removeFavorite(@CurrentCustomer() customer: any, @Param('companionId') companionId: string) {
+  removeFavorite(
+    @CurrentCustomer() customer: any,
+    @Param('companionId') companionId: string,
+  ) {
     return this.discoveryService.removeFavorite(customer.id, companionId);
   }
 
   @Get('interests')
-  @ApiOperation({ summary: 'Get list of available interest tags for discovery and onboarding' })
+  @ApiOperation({
+    summary: 'Get list of available interest tags for discovery and onboarding',
+  })
   getInterests() {
     return this.discoveryService.getInterests();
   }
 
   @Get('activities')
-  @ApiOperation({ summary: 'Get list of available booking activities and pricing' })
+  @ApiOperation({
+    summary: 'Get list of available booking activities and pricing',
+  })
   getActivities() {
     return this.discoveryService.getActivities();
   }

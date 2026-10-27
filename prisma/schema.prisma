@@ -171,9 +171,10 @@ model CustomerBooking {
   venueArea            String?
   venueCity            String?
   venueType            String?
+  safetyAcknowledged   Boolean                 @default(false)
   meetingPoint         String?
   landmark             String?
-  isApproved           Boolean                 @default(true)
+  isApproved           Boolean                 @default(false)
   date                 DateTime
   time                 String
   durationHours        Float                   @default(1)

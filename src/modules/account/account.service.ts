@@ -1,5 +1,13 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  UnauthorizedException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
+import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../../prisma/prisma.service';
+import { QA_TEST_OTP, isReservedTestOtp, isTestPhoneAllowlisted, isTestOtpAllowed } from '../../common/utils/otp-test.util';
 
 @Injectable()
 export class AccountService {
@@ -147,44 +155,46 @@ export class AccountService {
   }
 
   async submitReactivationRequest(data: { phone?: string; email?: string; reason?: string }) {
-    return {
-      success: true,
-      message: 'Your request to reactivate your account has been submitted successfully. Our team will review it within 24 hours.',
-      submittedAt: new Date().toISOString(),
-    };
+    void data;
+    throw new ServiceUnavailableException(
+      'Reactivation review is not connected. No request was recorded.',
+    );
   }
 
   // ── CHANGE MOBILE NUMBER (2-STEP OTP VERIFICATION) ────────────────────────
   async requestChangeMobileOtp(customerId: string, oldPhone: string, newPhone: string) {
     const customer = await this.prisma.customer.findUnique({ where: { id: customerId } });
     if (!customer) throw new NotFoundException('Customer not found');
-
     if (customer.phone !== oldPhone) {
       throw new NotFoundException('Old phone number does not match current registered account number');
     }
+    if (oldPhone === newPhone) throw new BadRequestException('The new number must differ from the current number');
 
     const existingNew = await this.prisma.customer.findUnique({ where: { phone: newPhone } });
     if (existingNew && existingNew.id !== customerId) {
-      throw new NotFoundException('New phone number is already registered to another account');
+      throw new BadRequestException('New phone number is already registered to another account');
     }
 
-    const oldOtp = process.env.OTP_DEV_BYPASS || '123456';
-    const newOtp = process.env.OTP_DEV_BYPASS || '123456';
-    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+    const qaNumbersAllowed = isTestPhoneAllowlisted(oldPhone) && isTestPhoneAllowlisted(newPhone);
+    if (!qaNumbersAllowed) {
+      throw new ServiceUnavailableException(
+        'SMS delivery is not integrated. No OTP was generated or sent for this number change.',
+      );
+    }
 
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+    const qaOtpHash = await bcrypt.hash(QA_TEST_OTP, 10);
     await this.prisma.customerOtp.deleteMany({ where: { phone: { in: [oldPhone, newPhone] } } });
     await this.prisma.customerOtp.createMany({
       data: [
-        { phone: oldPhone, otp: oldOtp, expiresAt },
-        { phone: newPhone, otp: newOtp, expiresAt },
+        { phone: oldPhone, otp: qaOtpHash, expiresAt },
+        { phone: newPhone, otp: qaOtpHash, expiresAt },
       ],
     });
 
     return {
       success: true,
-      message: 'Verification OTPs sent to both old and new mobile numbers',
-      devOldOtp: oldOtp,
-      devNewOtp: newOtp,
+      message: 'QA OTP records prepared for allowlisted numbers; no SMS was sent.',
     };
   }
 
@@ -193,30 +203,50 @@ export class AccountService {
     if (!customer || customer.phone !== oldPhone) {
       throw new NotFoundException('Current account number mismatch');
     }
+    if (oldPhone === newPhone) throw new BadRequestException('The new number must differ from the current number');
 
-    const bypassOtp = process.env.OTP_DEV_BYPASS || '123456';
-    const bypass = (oldOtp === '123456' && newOtp === '123456') ||
-      (oldOtp === bypassOtp && newOtp === bypassOtp);
-
-    if (!bypass) {
-      const oldRecord = await this.prisma.customerOtp.findFirst({ where: { phone: oldPhone, otp: oldOtp } });
-      const newRecord = await this.prisma.customerOtp.findFirst({ where: { phone: newPhone, otp: newOtp } });
-
-      if (!oldRecord || oldRecord.expiresAt < new Date()) {
-        throw new NotFoundException('Invalid or expired OTP for old phone number');
-      }
-      if (!newRecord || newRecord.expiresAt < new Date()) {
-        throw new NotFoundException('Invalid or expired OTP for new phone number');
-      }
+    const existingNew = await this.prisma.customer.findUnique({ where: { phone: newPhone } });
+    if (existingNew && existingNew.id !== customerId) {
+      throw new BadRequestException('New phone number is already registered to another account');
     }
 
-    // Update customer phone and clean up OTPs
-    await this.prisma.customer.update({
-      where: { id: customerId },
-      data: { phone: newPhone },
-    });
+    if (isReservedTestOtp(oldOtp) && !isTestOtpAllowed(oldPhone, oldOtp)) {
+      throw new UnauthorizedException('Invalid OTP for old phone number');
+    }
+    if (isReservedTestOtp(newOtp) && !isTestOtpAllowed(newPhone, newOtp)) {
+      throw new UnauthorizedException('Invalid OTP for new phone number');
+    }
 
-    await this.prisma.customerOtp.deleteMany({ where: { phone: { in: [oldPhone, newPhone] } } });
+    const [oldRecord, newRecord] = await Promise.all([
+      this.prisma.customerOtp.findFirst({ where: { phone: oldPhone }, orderBy: { createdAt: 'desc' } }),
+      this.prisma.customerOtp.findFirst({ where: { phone: newPhone }, orderBy: { createdAt: 'desc' } }),
+    ]);
+    const maxAttempts = Number.parseInt(process.env.OTP_MAX_ATTEMPTS ?? '5', 10);
+    if (!oldRecord || oldRecord.expiresAt < new Date() || oldRecord.attempts >= maxAttempts) {
+      throw new BadRequestException('Invalid, expired, or locked OTP for old phone number');
+    }
+    if (!newRecord || newRecord.expiresAt < new Date() || newRecord.attempts >= maxAttempts) {
+      throw new BadRequestException('Invalid, expired, or locked OTP for new phone number');
+    }
+
+    const matches = async (stored: string, submitted: string) =>
+      /^\$2[aby]\$/.test(stored) ? bcrypt.compare(submitted, stored) : stored === submitted;
+    const [oldMatches, newMatches] = await Promise.all([
+      matches(oldRecord.otp, oldOtp),
+      matches(newRecord.otp, newOtp),
+    ]);
+    if (!oldMatches || !newMatches) {
+      await Promise.all([
+        ...(!oldMatches ? [this.prisma.customerOtp.update({ where: { id: oldRecord.id }, data: { attempts: { increment: 1 } } })] : []),
+        ...(!newMatches ? [this.prisma.customerOtp.update({ where: { id: newRecord.id }, data: { attempts: { increment: 1 } } })] : []),
+      ]);
+      throw new UnauthorizedException('Invalid OTP for mobile number change');
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.customer.update({ where: { id: customerId }, data: { phone: newPhone } });
+      await tx.customerOtp.deleteMany({ where: { phone: { in: [oldPhone, newPhone] } } });
+    });
 
     return {
       success: true,
@@ -225,4 +255,3 @@ export class AccountService {
     };
   }
 }
-

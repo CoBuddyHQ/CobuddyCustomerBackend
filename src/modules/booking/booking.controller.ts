@@ -7,7 +7,7 @@ import { CurrentCustomer } from '../../common/decorators/current-customer.decora
 import { BookingService } from './booking.service';
 import {
   CreateBookingDto, CancelBookingDto, DisputeBookingDto,
-  ModifyBookingDto, CounterOfferResponseDto,
+  ModifyBookingDto, CounterOfferResponseDto, BookingPriceQuoteDto,
 } from './dto/booking.dto';
 
 @ApiTags('Bookings')
@@ -16,6 +16,12 @@ import {
 @Controller('bookings')
 export class BookingController {
   constructor(private readonly bookingService: BookingService) {}
+
+  @Post('quote')
+  @ApiOperation({ summary: 'Get a server-calculated booking price quote' })
+  getBookingQuote(@Body() dto: BookingPriceQuoteDto) {
+    return this.bookingService.getBookingQuote(dto);
+  }
 
   @Post()
   @ApiOperation({ summary: 'Create a new booking request' })

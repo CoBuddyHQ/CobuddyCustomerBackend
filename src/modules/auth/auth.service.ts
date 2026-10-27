@@ -2,11 +2,21 @@ import {
   Injectable,
   BadRequestException,
   UnauthorizedException,
+  ServiceUnavailableException,
   Logger,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import * as bcrypt from 'bcrypt';
+import * as crypto from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SendOtpDto, VerifyOtpDto } from './dto/auth.dto';
+import {
+  QA_TEST_OTP,
+  isReservedTestOtp,
+  normalizePhone,
+  isTestPhoneAllowlisted,
+  isTestOtpAllowed,
+} from '../../common/utils/otp-test.util';
 
 @Injectable()
 export class AuthService {
@@ -20,9 +30,21 @@ export class AuthService {
   // ── SEND OTP ──────────────────────────────────────────────────────────────
   async sendOtp(dto: SendOtpDto) {
     const { phone } = dto;
+    const normalized = normalizePhone(phone);
+    if (!normalized || normalized.length < 10) {
+      throw new BadRequestException('Invalid phone number format');
+    }
 
-    // Generate 6-digit OTP — support 123456 bypass
-    const otp = process.env.OTP_DEV_BYPASS || '123456';
+    const isAllowlisted = isTestPhoneAllowlisted(phone);
+    let otp: string;
+
+    if (isAllowlisted) {
+      otp = QA_TEST_OTP;
+    } else {
+      throw new ServiceUnavailableException(
+        'SMS OTP delivery is unavailable because no SMS sender is integrated. Please contact support.',
+      );
+    }
 
     const expiresAt = new Date(
       Date.now() + (parseInt(process.env.OTP_EXPIRES_IN_MINUTES ?? '10') * 60 * 1000),
@@ -33,14 +55,11 @@ export class AuthService {
 
     // Create new OTP
     await this.prisma.customerOtp.create({
-      data: { phone, otp, expiresAt },
+      data: { phone, otp: await bcrypt.hash(otp, 10), expiresAt },
     });
 
-    this.logger.log(`[AUTH] OTP for ${phone}: ${otp}`);
-
     return {
-      message: 'OTP sent successfully',
-      devOtp: otp,
+      message: 'QA test OTP prepared; no SMS was sent.',
     };
   }
 
@@ -48,42 +67,48 @@ export class AuthService {
   async verifyOtp(dto: VerifyOtpDto, deviceInfo?: string, ipAddress?: string) {
     const { phone, otp } = dto;
 
-    const bypassOtp = process.env.OTP_DEV_BYPASS || '123456';
-    const isDevBypass = otp === '123456' || otp === bypassOtp;
+    const otpRecord = await this.prisma.customerOtp.findFirst({
+      where: { phone },
+      orderBy: { createdAt: 'desc' },
+    });
 
-    if (!isDevBypass) {
-      const otpRecord = await this.prisma.customerOtp.findFirst({
-        where: { phone },
-        orderBy: { createdAt: 'desc' },
-      });
-
-      if (!otpRecord) {
-        throw new BadRequestException('OTP not found. Please request a new one.');
-      }
-
-      if (otpRecord.expiresAt < new Date()) {
-        await this.prisma.customerOtp.delete({ where: { id: otpRecord.id } });
-        throw new BadRequestException('OTP has expired. Please request a new one.');
-      }
-
-      const maxAttempts = parseInt(process.env.OTP_MAX_ATTEMPTS ?? '5');
-      if (otpRecord.attempts >= maxAttempts) {
-        throw new BadRequestException('Too many failed attempts. Please request a new OTP.');
-      }
-
-      if (otpRecord.otp !== otp) {
-        await this.prisma.customerOtp.update({
-          where: { id: otpRecord.id },
-          data: { attempts: { increment: 1 } },
-        });
-        throw new UnauthorizedException('Invalid OTP');
-      }
-
-      // OTP verified — delete it
-      await this.prisma.customerOtp.delete({ where: { id: otpRecord.id } });
-    } else {
-      await this.prisma.customerOtp.deleteMany({ where: { phone } });
+    if (!otpRecord) {
+      throw new BadRequestException('OTP not found. Please request a new one.');
     }
+
+    if (otpRecord.expiresAt < new Date()) {
+      await this.prisma.customerOtp.delete({ where: { id: otpRecord.id } });
+      throw new BadRequestException('OTP has expired. Please request a new one.');
+    }
+
+    const maxAttempts = parseInt(process.env.OTP_MAX_ATTEMPTS ?? '5');
+    if (otpRecord.attempts >= maxAttempts) {
+      throw new BadRequestException('Too many failed attempts. Please request a new OTP.');
+    }
+
+    // Fixed test OTP check: only allow if flag enabled and phone is in allowlist
+    const isTestOtp = isReservedTestOtp(otp);
+    const isLegacyQaCode = isTestPhoneAllowlisted(phone) && otp === '123456';
+    const isStoredHash = otpRecord.otp.startsWith('$2');
+    const matchesStoredOtp = isTestOtp
+      ? false
+      : isStoredHash
+        ? await bcrypt.compare(otp, otpRecord.otp).catch(() => false)
+        : otpRecord.otp === otp;
+    const isValid = isTestOtp
+      ? isTestOtpAllowed(phone, otp)
+      : !isLegacyQaCode && matchesStoredOtp;
+    if (!isValid) {
+      await this.prisma.customerOtp.update({
+        where: { id: otpRecord.id },
+        data: { attempts: { increment: 1 } },
+      });
+      throw new UnauthorizedException('Invalid OTP');
+    }
+
+    // OTP verified — single use deletion
+    await this.prisma.customerOtp.delete({ where: { id: otpRecord.id } });
+
 
     // Find or create customer
     let customer = await this.prisma.customer.findUnique({ where: { phone } });
@@ -146,12 +171,13 @@ export class AuthService {
       throw new UnauthorizedException('Invalid or expired refresh token');
     }
 
-    if (tokenRecord.customer.accountStatus === 'deleted') {
-      throw new UnauthorizedException('Account no longer exists');
+    if (['deleted', 'suspended', 'deactivated'].includes(tokenRecord.customer.accountStatus)) {
+      throw new UnauthorizedException('Account is not active');
     }
 
     // Rotate refresh token
-    await this.prisma.customerRefreshToken.delete({ where: { token: refreshToken } });
+    const consumed = await this.prisma.customerRefreshToken.deleteMany({ where: { token: refreshToken } });
+    if (consumed.count !== 1) throw new UnauthorizedException('Refresh token already used');
 
     const tokens = await this.generateTokens(
       tokenRecord.customer.id,
@@ -197,14 +223,15 @@ export class AuthService {
 
   // ── HELPERS ───────────────────────────────────────────────────────────────
   private async generateTokens(customerId: string, phone: string) {
-    const payload = { sub: customerId, phone };
+    const jti = crypto.randomUUID();
+    const payload = { sub: customerId, phone, jti };
 
     const [accessToken, refreshToken] = await Promise.all([
       this.jwtService.signAsync(payload, {
         secret: process.env.JWT_SECRET,
         expiresIn: (process.env.JWT_EXPIRES_IN ?? '15m') as any,
       }),
-      this.jwtService.signAsync(payload, {
+      this.jwtService.signAsync({ ...payload, type: 'refresh' }, {
         secret: process.env.JWT_REFRESH_SECRET,
         expiresIn: (process.env.JWT_REFRESH_EXPIRES_IN ?? '30d') as any,
       }),
