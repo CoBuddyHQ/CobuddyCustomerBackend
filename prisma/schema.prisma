@@ -440,6 +440,10 @@ model CustomerReview {
   communication Float?
   behavior      Float?
   isPublic      Boolean         @default(true)
+  companionSyncedAt DateTime?
+  adminSyncedAt    DateTime?
+  companionSyncAttemptedAt DateTime?
+  adminSyncAttemptedAt    DateTime?
   createdAt     DateTime        @default(now())
   booking       CustomerBooking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
   customer      Customer        @relation(fields: [customerId], references: [id], onDelete: Cascade)

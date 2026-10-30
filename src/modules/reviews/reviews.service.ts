@@ -2,6 +2,7 @@ import { Injectable, BadRequestException, NotFoundException, Logger } from '@nes
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateReviewDto } from './dto/reviews.dto';
 import { CompanionClientService } from '../companion-client/companion-client.service';
+import { Cron, CronExpression } from '@nestjs/schedule';
 
 @Injectable()
 export class ReviewsService {
@@ -68,34 +69,112 @@ export class ReviewsService {
       },
     });
 
-    // S2S cross-service sync to Companion Backend
-    this.companionClient.syncReviewToCompanion(targetCompanionId, {
-      bookingId: dto.bookingId,
-      customerId,
-      customerInitials: initials,
-      rating: dto.rating,
-      comment: dto.comment || dto.text,
-      tags: dto.tags || [],
-      punctuality: dto.punctuality,
-      communication: dto.communication,
-      behavior: dto.behavior,
-    }).catch((err) => {
-      this.logger.warn(`Failed S2S companion review sync: ${err.message}`);
-    });
-
-    // S2S cross-service sync to Admin Backend
-    this.companionClient.syncReviewToAdmin({
-      bookingId: dto.bookingId,
-      byCustomerId: customerId,
-      toCompanionId: targetCompanionId,
-      rating: dto.rating,
-      text: dto.comment || dto.text,
-      tagCodes: dto.tags || [],
-    }).catch((err) => {
-      this.logger.warn(`Failed S2S admin review sync: ${err.message}`);
-    });
+    void this.syncReviewDownstream(
+      { ...review, customer: { name: customer?.name } },
+      initials,
+    ).catch(() => this.logger.warn('Could not queue immediate review sync.'));
 
     return review;
+  }
+
+  @Cron(CronExpression.EVERY_MINUTE)
+  async retryPendingReviewSyncs(): Promise<void> {
+    const retryBefore = new Date(Date.now() - 60_000);
+    try {
+      const pending = await this.prisma.customerReview.findMany({
+        where: {
+          OR: [
+            {
+              companionSyncedAt: null,
+              OR: [
+                { companionSyncAttemptedAt: null },
+                { companionSyncAttemptedAt: { lte: retryBefore } },
+              ],
+            },
+            {
+              adminSyncedAt: null,
+              OR: [
+                { adminSyncAttemptedAt: null },
+                { adminSyncAttemptedAt: { lte: retryBefore } },
+              ],
+            },
+          ],
+        },
+        include: { customer: { select: { name: true } } },
+        orderBy: { createdAt: 'asc' },
+        take: 50,
+      });
+
+      for (const review of pending) {
+        await this.syncReviewDownstream(review).catch(() => {
+          this.logger.warn('A pending review sync attempt failed safely.');
+        });
+      }
+    } catch {
+      this.logger.warn('Could not process pending downstream review syncs.');
+    }
+  }
+
+  private async syncReviewDownstream(review: any, knownInitials?: string): Promise<void> {
+    const initials = knownInitials || this.customerInitials(review.customer?.name);
+    if (!review.companionSyncedAt) {
+      const attemptedAt = new Date();
+      await this.prisma.customerReview.update({
+        where: { id: review.id },
+        data: { companionSyncAttemptedAt: attemptedAt },
+      });
+      try {
+        await this.companionClient.syncReviewToCompanion(review.companionId, {
+          bookingId: review.bookingId,
+          customerId: review.customerId,
+          customerInitials: initials,
+          rating: review.rating,
+          comment: review.comment,
+          tags: review.tags || [],
+          punctuality: review.punctuality,
+          communication: review.communication,
+          behavior: review.behavior,
+        });
+        await this.prisma.customerReview.update({
+          where: { id: review.id },
+          data: { companionSyncedAt: new Date() },
+        });
+      } catch {
+        this.logger.warn('Customer review is queued for Companion sync retry.');
+      }
+    }
+
+    if (!review.adminSyncedAt) {
+      const attemptedAt = new Date();
+      await this.prisma.customerReview.update({
+        where: { id: review.id },
+        data: { adminSyncAttemptedAt: attemptedAt },
+      });
+      try {
+        await this.companionClient.syncReviewToAdmin({
+          bookingId: review.bookingId,
+          byCustomerId: review.customerId,
+          toCompanionId: review.companionId,
+          rating: review.rating,
+          text: review.comment,
+          tagCodes: review.tags || [],
+        });
+        await this.prisma.customerReview.update({
+          where: { id: review.id },
+          data: { adminSyncedAt: new Date() },
+        });
+      } catch {
+        this.logger.warn('Customer review is queued for Admin sync retry.');
+      }
+    }
+  }
+
+  private customerInitials(name?: string | null): string {
+    if (!name?.trim()) return 'C.U.';
+    const parts = name.trim().split(/\s+/);
+    return parts.length >= 2
+      ? `${parts[0][0].toUpperCase()}.${parts[1][0].toUpperCase()}.`
+      : `${parts[0][0].toUpperCase()}.`;
   }
 
   async getMyReviews(customerId: string) {

@@ -377,17 +377,24 @@ export class CompanionClientService {
         headers: this.getHeaders(correlationId),
         body: JSON.stringify(payload),
         signal: AbortSignal.timeout(5000),
+        redirect: 'error',
       });
       if (!res.ok) {
-        this.logger.warn(
-          `[CompanionClient] [${correlationId}] Failed to sync review to companion: ${res.status}`,
-        );
+        throw new Error(`HTTP ${res.status}`);
       }
-      return await res.json().catch(() => ({}));
-    } catch (e: any) {
+      const body: unknown = await res.json();
+      if (!body || typeof body !== 'object') throw new Error('Invalid response');
+      const envelope = body as Record<string, unknown>;
+      const data = envelope.data && typeof envelope.data === 'object'
+        ? envelope.data as Record<string, unknown>
+        : envelope;
+      if (data.success === false) throw new Error('Rejected response');
+      return data;
+    } catch {
       this.logger.warn(
-        `[CompanionClient] [${correlationId}] Error syncing review to companion: ${e.message}`,
+        `[CompanionClient] [${correlationId}] Review sync to Companion failed.`,
       );
+      throw new ServiceUnavailableException('Companion review sync did not complete.');
     }
   }
 
@@ -425,17 +432,24 @@ export class CompanionClientService {
         headers: this.getHeaders(correlationId),
         body: JSON.stringify(payload),
         signal: AbortSignal.timeout(5000),
+        redirect: 'error',
       });
       if (!res.ok) {
-        this.logger.warn(
-          `[CompanionClient] [${correlationId}] Failed to sync review to admin: ${res.status}`,
-        );
+        throw new Error(`HTTP ${res.status}`);
       }
-      return await res.json().catch(() => ({}));
-    } catch (e: any) {
+      const body: unknown = await res.json();
+      if (!body || typeof body !== 'object') throw new Error('Invalid response');
+      const envelope = body as Record<string, unknown>;
+      const data = envelope.data && typeof envelope.data === 'object'
+        ? envelope.data as Record<string, unknown>
+        : envelope;
+      if (data.success === false) throw new Error('Rejected response');
+      return data;
+    } catch {
       this.logger.warn(
-        `[CompanionClient] [${correlationId}] Error syncing review to admin: ${e.message}`,
+        `[CompanionClient] [${correlationId}] Review sync to Admin failed.`,
       );
+      throw new ServiceUnavailableException('Admin review sync did not complete.');
     }
   }
 }
