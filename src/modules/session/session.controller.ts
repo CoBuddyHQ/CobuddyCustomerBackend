@@ -18,6 +18,15 @@ export class SessionController {
     return this.sessionService.getCurrentSession(customer.id);
   }
 
+  @Get('booking/:bookingId')
+  @ApiOperation({ summary: 'Get session status for a customer-owned booking' })
+  getSessionForBooking(
+    @CurrentCustomer() customer: any,
+    @Param('bookingId') bookingId: string,
+  ) {
+    return this.sessionService.getSessionForBooking(customer.id, bookingId);
+  }
+
   @Get('history')
   @ApiOperation({ summary: 'Get session history' })
   getHistory(@CurrentCustomer() customer: any) {

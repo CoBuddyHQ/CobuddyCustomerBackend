@@ -206,4 +206,39 @@ describe('CompanionClientService private companion contract', () => {
       service.modifyBookingRequest('booking-1', { venueName: 'New venue' }),
     ).rejects.toThrow('already accepted or closed');
   });
+
+  it('sends counter-offer responses to the authenticated Companion internal API', async () => {
+    process.env.COMPANION_API_URL = 'https://companion.example.test/';
+    process.env.INTERNAL_SERVICE_SECRET = 'test-internal-secret-token';
+    const fetchMock = jest.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({ data: { sessionPassCode: '7314', sessionId: 'session-1' } }),
+    } as Response);
+
+    await expect(service.respondToCounterOffer('booking/1', 'accept')).resolves.toEqual({
+      sessionPassCode: '7314',
+      sessionId: 'session-1',
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://companion.example.test/api/v1/internal/companion/requests/booking%2F1/counter-response',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ action: 'accept' }),
+        headers: expect.objectContaining({
+          'X-Internal-Service-Key': 'test-internal-secret-token',
+        }),
+        signal: expect.any(AbortSignal),
+        redirect: 'error',
+      }),
+    );
+  });
+
+  it('does not report a counter response as successful when the Companion API is unavailable', async () => {
+    process.env.COMPANION_API_URL = 'https://companion.example.test';
+    process.env.INTERNAL_SERVICE_SECRET = 'test-internal-secret-token';
+    jest.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('offline'));
+
+    await expect(service.respondToCounterOffer('booking-1', 'decline'))
+      .rejects.toThrow('No response was recorded');
+  });
 });

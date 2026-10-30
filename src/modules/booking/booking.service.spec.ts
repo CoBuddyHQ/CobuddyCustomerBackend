@@ -354,6 +354,34 @@ describe('BookingService authoritative pricing', () => {
 });
 
 describe('BookingService accepted session pass synchronization', () => {
+  it('persists a Companion-issued pass on an idempotent accepted-status replay', async () => {
+    const booking = {
+      id: 'booking-1', customerId: 'customer-1', companionId: 'companion-1',
+      status: 'accepted', paymentStatus: 'pending', date: new Date('2026-10-20T10:00:00.000Z'),
+      time: '10:00 AM', durationHours: 1, totalAmount: 100, baseRate: 100,
+      baseTotal: 100, platformFee: 0, taxAmount: 0, activityName: 'Activity',
+      venueName: 'Venue', sessions: [],
+    };
+    const prisma = {
+      customerBooking: { findUnique: jest.fn().mockResolvedValue(booking) },
+      customerSession: { upsert: jest.fn().mockResolvedValue({}) },
+    };
+    const companionClient = { syncBookingToAdmin: jest.fn().mockResolvedValue(true) };
+    const service = new BookingService(prisma as any, companionClient as any);
+
+    await expect(service.handleInternalStatusUpdate('booking-1', {
+      status: 'accepted', sessionPassCode: '9137',
+    } as any)).resolves.toMatchObject({ success: true, duplicate: true });
+    expect(prisma.customerSession.upsert).toHaveBeenCalledWith({
+      where: { bookingId_customerId: { bookingId: 'booking-1', customerId: 'customer-1' } },
+      create: {
+        bookingId: 'booking-1', customerId: 'customer-1', companionId: 'companion-1',
+        status: 'upcoming', passCode: '9137',
+      },
+      update: { passCode: '9137' },
+    });
+  });
+
   it('does not mark a customer booking accepted without the Companion-issued pass', async () => {
     const prisma = {
       customerBooking: {
@@ -368,5 +396,51 @@ describe('BookingService accepted session pass synchronization', () => {
     await expect(service.handleInternalStatusUpdate('booking-1', { status: 'accepted' } as any))
       .rejects.toBeInstanceOf(BadRequestException);
     expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+});
+
+describe('BookingService counter-offer coordination', () => {
+  const booking = {
+    id: 'booking-1',
+    customerId: 'customer-1',
+    companionId: 'companion-1',
+    status: 'counter_proposed',
+  };
+
+  it('asks Companion to accept first and applies the issued session pass to Customer state', async () => {
+    const prisma = {
+      customerBooking: { findFirst: jest.fn().mockResolvedValue(booking) },
+    };
+    const companionClient = {
+      respondToCounterOffer: jest.fn().mockResolvedValue({
+        sessionPassCode: '7314',
+        sessionId: 'session-1',
+      }),
+    };
+    const service = new BookingService(prisma as any, companionClient as any);
+    const applyStatus = jest.spyOn(service, 'handleInternalStatusUpdate')
+      .mockResolvedValue({ success: true, booking: { id: 'booking-1', status: 'accepted' } } as any);
+
+    await expect(service.respondToCounterOffer('customer-1', 'booking-1', { action: 'accept' } as any))
+      .resolves.toMatchObject({ id: 'booking-1', status: 'accepted' });
+    expect(companionClient.respondToCounterOffer).toHaveBeenCalledWith('booking-1', 'accept');
+    expect(applyStatus).toHaveBeenCalledWith('booking-1', expect.objectContaining({
+      status: 'accepted', sessionPassCode: '7314', sessionId: 'session-1',
+    }));
+  });
+
+  it('does not change Customer state when Companion cannot confirm the response', async () => {
+    const prisma = {
+      customerBooking: { findFirst: jest.fn().mockResolvedValue(booking) },
+    };
+    const companionClient = {
+      respondToCounterOffer: jest.fn().mockRejectedValue(new ServiceUnavailableException()),
+    };
+    const service = new BookingService(prisma as any, companionClient as any);
+    const applyStatus = jest.spyOn(service, 'handleInternalStatusUpdate');
+
+    await expect(service.respondToCounterOffer('customer-1', 'booking-1', { action: 'decline' } as any))
+      .rejects.toBeInstanceOf(ServiceUnavailableException);
+    expect(applyStatus).not.toHaveBeenCalled();
   });
 });

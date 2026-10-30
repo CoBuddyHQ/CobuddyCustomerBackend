@@ -43,6 +43,15 @@ export class SessionService {
     return this.toSessionResponse(active);
   }
 
+  async getSessionForBooking(customerId: string, bookingId: string) {
+    const session = await this.prisma.customerSession.findFirst({
+      where: { customerId, bookingId },
+      include: { booking: true },
+      orderBy: { createdAt: 'desc' },
+    });
+    return session ? this.toSessionResponse(session) : null;
+  }
+
   async getSessionById(customerId: string, sessionId: string) {
     const session = await this.prisma.customerSession.findFirst({
       where: { id: sessionId, customerId },

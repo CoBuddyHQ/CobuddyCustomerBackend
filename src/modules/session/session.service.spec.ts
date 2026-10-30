@@ -3,6 +3,40 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { SessionService } from './session.service';
 
 describe('SessionService', () => {
+  it('returns the terminal session for a booking owned by the customer', async () => {
+    const completedSession = {
+      id: 'session-1',
+      bookingId: 'booking-1',
+      customerId: 'customer-1',
+      status: 'completed',
+      booking: { durationHours: 2 },
+    };
+    const prisma = {
+      customerSession: { findFirst: jest.fn().mockResolvedValue(completedSession) },
+    };
+    const service = new SessionService(prisma as unknown as PrismaService);
+
+    await expect(service.getSessionForBooking('customer-1', 'booking-1'))
+      .resolves.toMatchObject({ id: 'session-1', bookingId: 'booking-1', status: 'completed' });
+    expect(prisma.customerSession.findFirst).toHaveBeenCalledWith({
+      where: { customerId: 'customer-1', bookingId: 'booking-1' },
+      include: { booking: true },
+      orderBy: { createdAt: 'desc' },
+    });
+  });
+
+  it('does not return another customer’s booking session', async () => {
+    const prisma = {
+      customerSession: { findFirst: jest.fn().mockResolvedValue(null) },
+    };
+    const service = new SessionService(prisma as unknown as PrismaService);
+
+    await expect(service.getSessionForBooking('customer-1', 'other-booking')).resolves.toBeNull();
+    expect(prisma.customerSession.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: { customerId: 'customer-1', bookingId: 'other-booking' },
+    }));
+  });
+
   it('keeps an active session current even if another booking was accepted later', async () => {
     const prisma = {
       customerSession: {

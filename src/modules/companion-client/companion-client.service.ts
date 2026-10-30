@@ -317,6 +317,56 @@ export class CompanionClientService {
     return response.json();
   }
 
+  async respondToCounterOffer(
+    bookingId: string,
+    action: 'accept' | 'decline',
+  ): Promise<Record<string, any>> {
+    const correlationId = crypto.randomUUID();
+    const endpoint = `${this.companionApiUrl}/api/v1/internal/companion/requests/${encodeURIComponent(bookingId)}/counter-response`;
+    let response: Response;
+    try {
+      response = await fetch(endpoint, {
+        method: 'POST',
+        headers: this.getHeaders(correlationId),
+        body: JSON.stringify({ action }),
+        signal: AbortSignal.timeout(5000),
+        redirect: 'error',
+      });
+    } catch {
+      this.logger.warn(
+        `[CompanionClient] [${correlationId}] Counter-offer response could not reach Companion Backend.`,
+      );
+      throw new ServiceUnavailableException(
+        'Companion counter-offer service is unavailable. No response was recorded.',
+      );
+    }
+    if (response.status === 404) {
+      throw new NotFoundException('Counter offer not found or already handled.');
+    }
+    if (response.status === 409) {
+      throw new ConflictException('Counter offer was already handled. Refresh the booking.');
+    }
+    if (!response.ok) {
+      this.logger.warn(
+        `[CompanionClient] [${correlationId}] Counter-offer response returned status ${response.status}.`,
+      );
+      throw new ServiceUnavailableException(
+        'Companion did not confirm the counter-offer response.',
+      );
+    }
+    const payload: unknown = await response.json();
+    if (!payload || typeof payload !== 'object') {
+      throw new ServiceUnavailableException(
+        'Companion returned an invalid counter-offer response.',
+      );
+    }
+    const envelope = payload as Record<string, unknown>;
+    const data = envelope.data && typeof envelope.data === 'object'
+      ? envelope.data as Record<string, any>
+      : envelope;
+    return data;
+  }
+
   // ── POST /api/v1/internal/companions/:id/reviews ───────────────────────────
   async syncReviewToCompanion(companionId: string, payload: any) {
     const correlationId = crypto.randomUUID();

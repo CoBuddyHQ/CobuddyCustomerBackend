@@ -572,28 +572,31 @@ export class BookingService {
       where: { id: bookingId, customerId, status: 'counter_proposed' },
     });
     if (!booking) throw new NotFoundException('Counter offer not found');
-
-    const newStatus = dto.action === 'accept' ? 'accepted' : 'declined';
-    const updateData: any = { status: newStatus as any };
-
-    if (dto.action === 'accept') {
-      if (booking.counterDate) updateData.date = booking.counterDate;
-      if (booking.counterTime) updateData.time = booking.counterTime;
-      if (booking.counterVenueName)
-        updateData.venueName = booking.counterVenueName;
-      if (booking.counterDurationHours)
-        updateData.durationHours = booking.counterDurationHours;
-      if (booking.counterTotalAmount)
-        updateData.totalAmount = booking.counterTotalAmount;
-      updateData.acceptedAt = new Date();
+    if (!this.companionClient) {
+      throw new ServiceUnavailableException(
+        'Companion counter-offer service is unavailable. No response was recorded.',
+      );
     }
 
-    const updated = await this.prisma.customerBooking.update({
-      where: { id: bookingId },
-      data: updateData,
+    const companionResult = await this.companionClient.respondToCounterOffer(
+      bookingId,
+      dto.action,
+    );
+    if (dto.action === 'accept' && !companionResult.sessionPassCode) {
+      throw new ServiceUnavailableException(
+        'Companion did not confirm the accepted counter-offer with a session pass.',
+      );
+    }
+
+    const syncResult = await this.handleInternalStatusUpdate(bookingId, {
+      status: dto.action === 'accept' ? 'accepted' : 'declined',
+      sessionPassCode: companionResult.sessionPassCode,
+      sessionId: companionResult.sessionId || companionResult.session?.id,
+      companionId: booking.companionId,
+      reason: 'Customer declined the counter-offer.',
     });
 
-    return this.buildBookingResponse(updated);
+    return syncResult.booking;
   }
 
   // ── DISPUTE BOOKING ───────────────────────────────────────────────────────
@@ -727,8 +730,27 @@ export class BookingService {
     }
 
     const status = dto.status.toLowerCase();
+    const effectivePassCode = dto.sessionPassCode || dto.passCode;
     if (status === booking.status) {
       // Replays must not create duplicate notifications or reset session timestamps.
+      // A prior local counter-offer response may have set the booking to accepted
+      // before the Companion callback arrived. Persist its server-issued pass
+      // without regressing an existing session status or duplicating notifications.
+      if (status === 'accepted' && effectivePassCode) {
+        await this.prisma.customerSession.upsert({
+          where: {
+            bookingId_customerId: { bookingId, customerId: booking.customerId },
+          },
+          create: {
+            bookingId,
+            customerId: booking.customerId,
+            companionId: booking.companionId,
+            status: 'upcoming',
+            passCode: effectivePassCode,
+          },
+          update: { passCode: effectivePassCode },
+        });
+      }
       await this.companionClient?.syncBookingToAdmin({ bookingId, status });
       return { success: true, duplicate: true, booking: this.buildBookingResponse(booking) };
     }
@@ -736,7 +758,6 @@ export class BookingService {
       (['confirmed', 'in_progress'].includes(booking.status) && ['accepted', 'counter_proposed'].includes(status))) {
       return { success: true, ignored: true, booking: this.buildBookingResponse(booking) };
     }
-    const effectivePassCode = dto.sessionPassCode || dto.passCode;
     if (status === 'accepted') {
       if (!effectivePassCode) {
         throw new BadRequestException(
@@ -749,6 +770,17 @@ export class BookingService {
           data: {
             status: 'accepted',
             acceptedAt: new Date(),
+            ...(booking.counterDate ? { date: booking.counterDate } : {}),
+            ...(booking.counterTime ? { time: booking.counterTime } : {}),
+            ...(booking.counterVenueName
+              ? { venueName: booking.counterVenueName }
+              : {}),
+            ...(booking.counterDurationHours
+              ? { durationHours: booking.counterDurationHours }
+              : {}),
+            ...(booking.counterTotalAmount
+              ? { totalAmount: booking.counterTotalAmount }
+              : {}),
           },
         });
 
