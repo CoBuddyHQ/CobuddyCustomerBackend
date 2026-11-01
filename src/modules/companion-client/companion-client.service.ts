@@ -453,6 +453,31 @@ export class CompanionClientService {
     }
   }
 
+  private cachedMasterBundle: any = null;
+
+  getCachedMasterBundle(): any {
+    return this.cachedMasterBundle;
+  }
+
+  // ── GET /api/internal/master-data/bundle (Admin Backend) ─────────────────────
+  async getMasterDataBundle() {
+    const correlationId = crypto.randomUUID();
+    const endpoint = `${this.adminApiUrl}/api/internal/master-data/bundle`;
+    try {
+      const res = await fetch(endpoint, {
+        headers: this.getHeaders(correlationId),
+        signal: AbortSignal.timeout(5000),
+      });
+      if (!res.ok) return this.cachedMasterBundle;
+      const body: any = await res.json().catch(() => null);
+      const data = body?.data || body || null;
+      if (data) this.cachedMasterBundle = data;
+      return data;
+    } catch {
+      return this.cachedMasterBundle;
+    }
+  }
+
   // ── POST /api/v1/internal/sessions/:bookingId/complete (Companion Backend) ──
   async completeSession(bookingId: string, payload?: { tip?: number; notes?: string }) {
     const correlationId = crypto.randomUUID();

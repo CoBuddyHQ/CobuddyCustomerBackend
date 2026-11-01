@@ -1,6 +1,7 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, Optional } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { ACTIVITY_CATEGORIES } from '../../common/constants/activity-catalog';
+import { CompanionClientService } from '../companion-client/companion-client.service';
 
 export const ADMIN_VALUES = {
   walletBalanceLimits: { nonKycMax: 10000 },
@@ -57,9 +58,13 @@ export const ADMIN_VALUES = {
 @ApiTags('System')
 @Controller('system')
 export class SystemController {
+  constructor(@Optional() private readonly companionClient?: CompanionClientService) {}
+
   @Get('config')
   @ApiOperation({ summary: 'Get remote system configurations (force update, maintenance, legal URLs)' })
-  getConfig() {
+  async getConfig() {
+    const bundle = await this.companionClient?.getMasterDataBundle().catch(() => null);
+    const defaults = bundle?.defaults;
     return {
       minAppVersion: '1.0.0',
       currentAppVersion: '1.0.0',
@@ -74,14 +79,55 @@ export class SystemController {
         safety: 'https://cobuddy.club/safety',
         communityGuidelines: 'https://cobuddy.club/guidelines',
       },
-      adminValues: ADMIN_VALUES,
+      adminValues: {
+        ...ADMIN_VALUES,
+        walletBalanceLimits: {
+          nonKycMax: defaults?.nonKycMaxWalletBalance ?? ADMIN_VALUES.walletBalanceLimits.nonKycMax,
+        },
+        commission: {
+          minimumWithdrawalAmount: ADMIN_VALUES.commission.minimumWithdrawalAmount,
+          serviceFee: defaults?.serviceFeePerBooking ?? ADMIN_VALUES.commission.serviceFee,
+          platformFeePercentage: defaults?.platformCommissionRate ?? ADMIN_VALUES.commission.platformFeePercentage,
+          taxPercentage: ADMIN_VALUES.commission.taxPercentage,
+        },
+        pricing: {
+          cancellationFeePercentage: defaults?.cancellationFeePercentage ?? ADMIN_VALUES.pricing.cancellationFeePercentage,
+        },
+        cities: bundle?.cities || [],
+        interests: bundle?.interests || [],
+        languages: bundle?.languages || [],
+      },
     };
   }
 
   @Get('master-data')
   @ApiOperation({ summary: 'Get master categories, activities, languages, multipliers, review tags, and refund tiers' })
   getMasterData() {
-    return ADMIN_VALUES;
+    const bundle = this.companionClient?.getCachedMasterBundle();
+    if (!bundle) return ADMIN_VALUES;
+
+    return {
+      ...ADMIN_VALUES,
+      cities: bundle.cities || [],
+      interests: (bundle.interests && bundle.interests.length > 0) ? bundle.interests : ADMIN_VALUES.activityCategories,
+      spokenLanguages: (bundle.languages && bundle.languages.length > 0) ? bundle.languages.map((l: any) => l.code) : ADMIN_VALUES.spokenLanguages,
+      defaults: bundle.defaults,
+    };
+  }
+
+  @Get('master-data/live')
+  @ApiOperation({ summary: 'Fetch fresh master data directly from Admin' })
+  async getLiveMasterData() {
+    const bundle = await this.companionClient?.getMasterDataBundle().catch(() => null);
+    if (!bundle) return ADMIN_VALUES;
+
+    return {
+      ...ADMIN_VALUES,
+      cities: bundle.cities || [],
+      interests: (bundle.interests && bundle.interests.length > 0) ? bundle.interests : ADMIN_VALUES.activityCategories,
+      spokenLanguages: (bundle.languages && bundle.languages.length > 0) ? bundle.languages.map((l: any) => l.code) : ADMIN_VALUES.spokenLanguages,
+      defaults: bundle.defaults,
+    };
   }
 
   @Get('status')

@@ -173,7 +173,16 @@ export class DiscoveryService {
     return { message: 'Removed from favorites' };
   }
 
-  getInterests() {
+  async getInterests() {
+    const bundle = await this.companionClient.getMasterDataBundle().catch(() => null);
+    if (bundle?.interests && bundle.interests.length > 0) {
+      return bundle.interests.map((i: any) => ({
+        id: i.id,
+        name: i.name,
+        icon: i.icon || 'star-outline',
+        category: (i.category || 'general').toLowerCase(),
+      }));
+    }
     return [
       {
         id: 'int_1',
