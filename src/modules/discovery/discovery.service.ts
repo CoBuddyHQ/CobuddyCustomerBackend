@@ -33,7 +33,7 @@ export class DiscoveryService {
     return this.companionClient.getCompanionById(companionId);
   }
 
-  async getCompanions(filter: CompanionFilterDto) {
+  async getCompanions(filter: CompanionFilterDto, customerId?: string) {
     const data = await this.fetchCompanionsFromService({
       city: filter.city,
       category: filter.category,
@@ -42,15 +42,47 @@ export class DiscoveryService {
       page: filter.page,
       limit: filter.limit,
     });
+    if (customerId && data?.companions) {
+      const blocked = await this.prisma.customerBlock.findMany({
+        where: { blockerId: customerId },
+        select: { blockedId: true },
+      });
+      if (blocked.length > 0) {
+        const blockedIds = new Set(blocked.map((b) => b.blockedId));
+        data.companions = data.companions.filter((c: any) => !blockedIds.has(c.id));
+        if (typeof data.total === 'number') {
+          data.total = data.companions.length;
+        }
+      }
+    }
     return data;
   }
 
-  async getFeaturedCompanions() {
+  async getFeaturedCompanions(customerId?: string) {
     const data = await this.fetchCompanionsFromService({ limit: 10 });
-    return (data.companions || []).filter((c: any) => (c.rating ?? 0) >= 4.8);
+    let list = (data.companions || []).filter((c: any) => (c.rating ?? 0) >= 4.8);
+    if (customerId && list.length > 0) {
+      const blocked = await this.prisma.customerBlock.findMany({
+        where: { blockerId: customerId },
+        select: { blockedId: true },
+      });
+      if (blocked.length > 0) {
+        const blockedIds = new Set(blocked.map((b) => b.blockedId));
+        list = list.filter((c: any) => !blockedIds.has(c.id));
+      }
+    }
+    return list;
   }
 
-  async getCompanionDetail(companionId: string) {
+  async getCompanionDetail(companionId: string, customerId?: string) {
+    if (customerId) {
+      const isBlocked = await this.prisma.customerBlock.findFirst({
+        where: { blockerId: customerId, blockedId: companionId },
+      });
+      if (isBlocked) {
+        throw new NotFoundException('Companion profile is unavailable.');
+      }
+    }
     const profile = await this.fetchCompanionDetailFromService(companionId);
 
     try {
@@ -291,7 +323,7 @@ export class DiscoveryService {
     ];
 
     const [featuredCompanions, campaignsRes] = await Promise.all([
-      this.getFeaturedCompanions(),
+      this.getFeaturedCompanions(customerId),
       this.companionClient
         .getCampaigns(customerProfile?.city ?? undefined)
         .catch(() => {

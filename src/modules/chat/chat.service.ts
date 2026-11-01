@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 
 @Injectable()
@@ -66,6 +66,8 @@ export class ChatService {
     });
     if (!conv) throw new NotFoundException('Conversation not found');
 
+
+
     const skip = (page - 1) * limit;
     const messages = await this.prisma.customerMessage.findMany({
       where: { conversationId },
@@ -88,6 +90,15 @@ export class ChatService {
       where: { id: conversationId, customerId },
     });
     if (!conv) throw new NotFoundException('Conversation not found');
+
+    if (conv.companionId) {
+      const isBlocked = await this.prisma.customerBlock.findFirst({
+        where: { blockerId: customerId, blockedId: conv.companionId },
+      });
+      if (isBlocked) {
+        throw new BadRequestException('Cannot send messages to a blocked companion.');
+      }
+    }
 
     const message = await this.prisma.customerMessage.create({
       data: {

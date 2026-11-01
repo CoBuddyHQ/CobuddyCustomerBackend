@@ -38,4 +38,15 @@ export class InternalBookingController {
   ) {
     return this.bookingService.handleInternalStatusUpdate(bookingId, dto);
   }
+
+  @Post('/customers/:id/ban')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Internal S2S endpoint from Admin to ban/unban customer' })
+  @ApiHeader({ name: 'X-Internal-Service-Key', required: true, description: 'Internal S2S secret' })
+  async handleCustomerBan(
+    @Param('id') customerId: string,
+    @Body() body: { isBanned: boolean; reason?: string },
+  ) {
+    return this.bookingService.updateCustomerBanStatus(customerId, body);
+  }
 }

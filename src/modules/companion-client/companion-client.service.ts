@@ -452,4 +452,63 @@ export class CompanionClientService {
       throw new ServiceUnavailableException('Admin review sync did not complete.');
     }
   }
+
+  // ── POST /api/v1/internal/sessions/:bookingId/complete (Companion Backend) ──
+  async completeSession(bookingId: string, payload?: { tip?: number; notes?: string }) {
+    const correlationId = crypto.randomUUID();
+    const endpoint = `${this.companionApiUrl}/api/v1/internal/sessions/${encodeURIComponent(bookingId)}/complete`;
+    try {
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: this.getHeaders(correlationId),
+        body: JSON.stringify(payload || {}),
+        signal: AbortSignal.timeout(5000),
+        redirect: 'error',
+      });
+      if (res.status === 404) throw new NotFoundException('Companion session not found.');
+      if (!res.ok) {
+        throw new ServiceUnavailableException('Companion Backend did not confirm session completion.');
+      }
+      const body: unknown = await res.json();
+      if (!body || typeof body !== 'object') {
+        throw new ServiceUnavailableException('Companion Backend returned an invalid completion response.');
+      }
+      const envelope = body as Record<string, unknown>;
+      const result = envelope.data && typeof envelope.data === 'object'
+        ? envelope.data as Record<string, any>
+        : envelope;
+      if (result.success !== true || result.session?.status !== 'completed') {
+        throw new ServiceUnavailableException('Companion Backend did not confirm session completion.');
+      }
+      this.logger.log(`[CompanionClient] [${correlationId}] Companion confirmed session completion.`);
+      return result;
+    } catch (error) {
+      if (error instanceof NotFoundException || error instanceof ServiceUnavailableException) {
+        this.logger.warn(`[CompanionClient] [${correlationId}] Session completion was not confirmed.`);
+        throw error;
+      }
+      this.logger.warn(`[CompanionClient] [${correlationId}] Session completion request failed.`);
+      throw new ServiceUnavailableException('Companion Backend did not confirm session completion. No customer status was changed.');
+    }
+  }
+
+  // ── POST /api/v1/internal/sessions/:bookingId/extend (Companion Backend) ────
+  async extendSession(bookingId: string, extraMinutes: number) {
+    const correlationId = crypto.randomUUID();
+    const endpoint = `${this.companionApiUrl}/api/v1/internal/sessions/${encodeURIComponent(bookingId)}/extend`;
+    try {
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: this.getHeaders(correlationId),
+        body: JSON.stringify({ extraMinutes }),
+        signal: AbortSignal.timeout(5000),
+      });
+      if (!res.ok) {
+        this.logger.warn(`[CompanionClient] [${correlationId}] Extend session returned ${res.status}`);
+      }
+      return await res.json().catch(() => ({}));
+    } catch (e: any) {
+      this.logger.warn(`[CompanionClient] [${correlationId}] Extend session S2S error: ${e.message}`);
+    }
+  }
 }

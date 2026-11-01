@@ -154,20 +154,59 @@ describe('SessionService', () => {
     expect(prisma.customerSession.update).not.toHaveBeenCalled();
   });
 
-  it('does not locally complete a session while Companion Backend owns completion', async () => {
+  it('does not locally complete a session when Companion Backend fails to confirm', async () => {
+    const session = { id: 'session-1', bookingId: 'booking-1', customerId: 'customer-1', status: 'active' };
     const prisma = {
-      customerSession: { findFirst: jest.fn(), update: jest.fn() },
+      customerSession: { findFirst: jest.fn().mockResolvedValue(session), update: jest.fn() },
       customerBooking: { update: jest.fn() },
       $transaction: jest.fn(),
     };
-    const service = new SessionService(prisma as unknown as PrismaService);
+    const companionClient = {
+      completeSession: jest.fn().mockRejectedValue(new ServiceUnavailableException('Companion unavailable')),
+    };
+    const service = new SessionService(prisma as unknown as PrismaService, companionClient as any);
 
     await expect(service.endSession('customer-1', 'session-1'))
       .rejects.toBeInstanceOf(ServiceUnavailableException);
-    expect(prisma.customerSession.findFirst).not.toHaveBeenCalled();
+    expect(companionClient.completeSession).toHaveBeenCalledWith('booking-1', { notes: 'Ended by customer' });
     expect(prisma.customerSession.update).not.toHaveBeenCalled();
     expect(prisma.customerBooking.update).not.toHaveBeenCalled();
     expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('updates customer records only after Companion confirms completion', async () => {
+    const session = {
+      id: 'session-1', bookingId: 'booking-1', customerId: 'customer-1', companionId: 'companion-1',
+      status: 'active', booking: { companionName: 'Companion' },
+    };
+    const completedAt = new Date('2026-10-31T10:00:00.000Z');
+    const updatedSession = { ...session, status: 'completed', checkOutTime: completedAt };
+    const tx = {
+      customerSession: { update: jest.fn().mockResolvedValue(updatedSession) },
+      customerBooking: { update: jest.fn().mockResolvedValue({}) },
+      customerNotification: { create: jest.fn().mockResolvedValue({}) },
+    };
+    const prisma = {
+      customerSession: { findFirst: jest.fn().mockResolvedValue(session) },
+      $transaction: jest.fn((callback: (transaction: typeof tx) => unknown) => callback(tx)),
+    };
+    const companionClient = {
+      completeSession: jest.fn().mockResolvedValue({
+        success: true,
+        session: { status: 'completed', checkOutTime: completedAt.toISOString() },
+      }),
+    };
+    const service = new SessionService(prisma as unknown as PrismaService, companionClient as any);
+
+    await expect(service.endSession('customer-1', 'session-1')).resolves.toMatchObject({ status: 'completed' });
+    expect(tx.customerSession.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'session-1' },
+      data: expect.objectContaining({ status: 'completed', checkOutTime: completedAt, tipAmount: 0 }),
+    }));
+    expect(tx.customerBooking.update).toHaveBeenCalledWith({
+      where: { id: 'booking-1' },
+      data: { status: 'completed', completedAt },
+    });
   });
 
   it('does not allow a client supplied tip to create or complete anything', async () => {

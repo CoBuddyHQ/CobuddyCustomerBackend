@@ -3,12 +3,17 @@ import {
   NotFoundException,
   BadRequestException,
   ServiceUnavailableException,
+  Optional,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { CompanionClientService } from '../companion-client/companion-client.service';
 
 @Injectable()
 export class SessionService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    @Optional() private companionClient?: CompanionClientService,
+  ) {}
 
   // Maps raw session to the frontend Session interface
   private toSessionResponse(session: any) {
@@ -75,9 +80,10 @@ export class SessionService {
       });
       if (!existing?.passCode) {
         throw new ServiceUnavailableException(
-          'The Companion Backend session pass is unavailable. Check-in was not recorded.',
+          'The Companion Backend session pass has not synced yet. Check-in was not recorded.',
         );
       }
+
       if (['checked_in', 'active', 'extending'].includes(existing.status)) {
         return existing;
       }
@@ -104,22 +110,81 @@ export class SessionService {
     return this.toSessionResponse(session);
   }
 
-  async extendSession(customerId: string, sessionId: string, extraMinutes: number) {
-    void customerId;
-    void sessionId;
-    void extraMinutes;
+  async extendSession(_customerId: string, _sessionId: string, extraMinutes: number) {
+    if (!Number.isInteger(extraMinutes) || extraMinutes < 15 || extraMinutes > 180) {
+      throw new BadRequestException('Extension duration must be between 15 and 180 minutes.');
+    }
     throw new ServiceUnavailableException(
-      'Session extensions require Companion approval and payment processing. No duration change was applied.',
+      'Session extensions require Companion approval and confirmed payment processing. No duration change or payment was applied.',
     );
   }
 
   async endSession(customerId: string, sessionId: string, tip?: number) {
-    void customerId;
-    void sessionId;
-    void tip;
-    throw new ServiceUnavailableException(
-      'Session completion must be recorded by the Companion Backend. This request did not change session or booking state.',
-    );
+    if (tip !== undefined && tip !== 0) {
+      throw new ServiceUnavailableException(
+        'Tip payment is not configured. No tip or session status was changed.',
+      );
+    }
+
+    const session = await this.prisma.customerSession.findFirst({
+      where: { id: sessionId, customerId },
+      include: { booking: true },
+    });
+    if (!session) throw new NotFoundException('Session not found');
+    if (session.status === 'completed') return this.toSessionResponse(session);
+    if (!['checked_in', 'active', 'extending'].includes(session.status)) {
+      throw new BadRequestException('Only an active session can be ended.');
+    }
+    if (!session.bookingId || !this.companionClient) {
+      throw new ServiceUnavailableException(
+        'Companion completion service is unavailable. No session status was changed.',
+      );
+    }
+
+    // Companion Backend owns the session and must confirm completion first.
+    const confirmation = await this.companionClient.completeSession(session.bookingId, {
+      notes: 'Ended by customer',
+    });
+    if (confirmation?.success !== true || confirmation.session?.status !== 'completed') {
+      throw new ServiceUnavailableException(
+        'Companion Backend did not confirm completion. No customer session status was changed.',
+      );
+    }
+
+    const completedAt = confirmation.session.checkOutTime
+      ? new Date(confirmation.session.checkOutTime)
+      : new Date();
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const updatedSession = await tx.customerSession.update({
+        where: { id: session.id },
+        data: { status: 'completed', checkOutTime: completedAt, tipAmount: 0 },
+        include: { booking: true },
+      });
+      await tx.customerBooking.update({
+        where: { id: session.bookingId! },
+        data: { status: 'completed', completedAt },
+      });
+      await tx.customerNotification.create({
+        data: {
+          customerId,
+          title: 'Session Completed',
+          description: `Your session with ${session.booking?.companionName || 'your companion'} has ended.`,
+          category: 'session',
+          icon: 'star',
+          iconColor: '#F39C12',
+          route: 'CompanionReviewScreen',
+          stack: 'LiveSessionStack',
+          routeParams: {
+            bookingId: session.bookingId,
+            companionId: session.companionId,
+            companionName: session.booking?.companionName,
+          },
+        },
+      }).catch(() => {});
+      return updatedSession;
+    });
+
+    return this.toSessionResponse(updated);
   }
 
   async listSessionHistory(customerId: string) {

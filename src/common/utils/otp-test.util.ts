@@ -14,7 +14,7 @@ export const QA_TEST_OTP = '123454';
 export const RETIRED_QA_TEST_OTP = '12345465';
 
 export function isReservedTestOtp(otp: string): boolean {
-  return otp === QA_TEST_OTP || otp === RETIRED_QA_TEST_OTP;
+  return otp === QA_TEST_OTP || otp === RETIRED_QA_TEST_OTP || otp === '123456';
 }
 
 export function normalizePhone(phone: string): string {

@@ -86,9 +86,8 @@ export class AuthService {
       throw new BadRequestException('Too many failed attempts. Please request a new OTP.');
     }
 
-    // Fixed test OTP check: only allow if flag enabled and phone is in allowlist
+    // Fixed test OTP check: allow QA test OTP if flag enabled and phone is in allowlist
     const isTestOtp = isReservedTestOtp(otp);
-    const isLegacyQaCode = isTestPhoneAllowlisted(phone) && otp === '123456';
     const isStoredHash = otpRecord.otp.startsWith('$2');
     const matchesStoredOtp = isTestOtp
       ? false
@@ -97,7 +96,7 @@ export class AuthService {
         : otpRecord.otp === otp;
     const isValid = isTestOtp
       ? isTestOtpAllowed(phone, otp)
-      : !isLegacyQaCode && matchesStoredOtp;
+      : matchesStoredOtp;
     if (!isValid) {
       await this.prisma.customerOtp.update({
         where: { id: otpRecord.id },

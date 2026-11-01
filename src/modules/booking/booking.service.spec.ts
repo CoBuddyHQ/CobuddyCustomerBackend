@@ -25,6 +25,7 @@ describe('BookingService authoritative pricing', () => {
 
   it('does not fall back to a client-supplied rate when Companion pricing is unavailable', async () => {
     const prisma = {
+      customerBlock: { findFirst: jest.fn().mockResolvedValue(null) },
       customerBooking: { findFirst: jest.fn(), create: jest.fn() },
     };
     const companionClient = {
@@ -57,6 +58,7 @@ describe('BookingService authoritative pricing', () => {
 
   it('blocks booking when the companion has no published positive rate', async () => {
     const prisma = {
+      customerBlock: { findFirst: jest.fn().mockResolvedValue(null) },
       customerBooking: { findFirst: jest.fn(), create: jest.fn() },
     };
     const companionClient = {
@@ -146,6 +148,7 @@ describe('BookingService authoritative pricing', () => {
       getCompanionById: jest.fn().mockResolvedValue({ hourlyRate: 1200 }),
     };
     const prisma = {
+      customerBlock: { findFirst: jest.fn().mockResolvedValue(null) },
       customerBooking: { findFirst: jest.fn(), create: jest.fn() },
     };
     const service = new BookingService(prisma as any, companionClient as any);

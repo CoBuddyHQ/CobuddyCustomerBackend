@@ -1,8 +1,10 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 
 @Injectable()
 export class SafetyService {
+  private readonly logger = new Logger(SafetyService.name);
+
   constructor(private prisma: PrismaService) {}
 
   // ── SOS ───────────────────────────────────────────────────────────────────
@@ -105,7 +107,7 @@ export class SafetyService {
       evidenceUrls?: string[];
     },
   ) {
-    return this.prisma.customerIncident.create({
+    const report = await this.prisma.customerIncident.create({
       data: {
         customerId,
         companionId: data.companionId,
@@ -116,6 +118,53 @@ export class SafetyService {
         status: 'submitted',
       },
     });
+
+    // Synchronize the persisted report to Admin only when both server-side
+    // settings are present. Never send a built-in key or expose response bodies.
+    if (!data.companionId) {
+      this.logger.warn('Admin S2S report sync skipped because the report has no reported-user ID.');
+      return report;
+    }
+    const adminUrl = process.env.ADMIN_API_URL;
+    const secret = process.env.INTERNAL_SERVICE_SECRET;
+    if (!adminUrl || !secret) {
+      this.logger.warn('Admin S2S report sync skipped because required configuration is missing.');
+      return report;
+    }
+
+    const abortController = new AbortController();
+    const timeout = setTimeout(() => abortController.abort(), 5000);
+    try {
+      const baseUrl = adminUrl.replace(/\/+$/, '');
+      const resp = await fetch(`${baseUrl}/api/internal/reports/sync`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-internal-service-key': secret,
+        },
+        body: JSON.stringify({
+          reporterId: customerId,
+          reporterType: 'CUSTOMER',
+          reportedUserId: data.companionId,
+          reportedUserType: 'COMPANION',
+          categoryCode: (data.incidentType || 'general').toUpperCase(),
+          description: data.description,
+          evidenceUrls: data.evidenceUrls ?? [],
+          bookingId: data.bookingId,
+          reportRef: `REP-${report.id.slice(0, 8).toUpperCase()}`,
+        }),
+        signal: abortController.signal,
+      });
+      if (!resp.ok) {
+        this.logger.warn(`Admin S2S report sync returned HTTP ${resp.status}.`);
+      }
+    } catch {
+      this.logger.warn('Admin S2S report sync failed or timed out.');
+    } finally {
+      clearTimeout(timeout);
+    }
+
+    return report;
   }
 
   async getIncidentReports(customerId: string) {

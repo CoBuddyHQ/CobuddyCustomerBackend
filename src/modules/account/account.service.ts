@@ -7,11 +7,12 @@ import {
 } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../../prisma/prisma.service';
+import { CompanionClientService } from '../companion-client/companion-client.service';
 import { QA_TEST_OTP, isReservedTestOtp, isTestPhoneAllowlisted, isTestOtpAllowed } from '../../common/utils/otp-test.util';
 
 @Injectable()
 export class AccountService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService, private companionClient: CompanionClientService) {}
 
   async getSettings(customerId: string) {
     const setting = await this.prisma.customerSetting.findUnique({
@@ -69,9 +70,26 @@ export class AccountService {
   }
 
   async getBlockedUsers(customerId: string) {
-    return this.prisma.customerBlock.findMany({
+    const blocks = await this.prisma.customerBlock.findMany({
       where: { blockerId: customerId },
+      orderBy: { createdAt: 'desc' },
     });
+    return Promise.all(
+      blocks.map(async (b) => {
+        let name = 'CoBuddy Companion';
+        try {
+          const comp = await this.companionClient.getCompanionById(b.blockedId).catch(() => null);
+          if (comp?.name) name = comp.name;
+        } catch {
+          // ignore
+        }
+        return {
+          id: b.blockedId,
+          name,
+          blockedAt: b.createdAt,
+        };
+      }),
+    );
   }
 
   async deactivateAccount(customerId: string) {

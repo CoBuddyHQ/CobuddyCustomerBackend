@@ -43,26 +43,38 @@ export class DiscoveryController {
   }
 
   @Get('companions')
+  @UseGuards(OptionalJwtAuthGuard)
+  @ApiBearerAuth('customer-jwt')
   @ApiOperation({ summary: 'List and filter companion profiles' })
   @ApiQuery({ name: 'category', required: false })
   @ApiQuery({ name: 'gender', required: false })
   @ApiQuery({ name: 'search', required: false })
   @ApiQuery({ name: 'page', required: false })
   @ApiQuery({ name: 'limit', required: false })
-  getCompanions(@Query() query: CompanionFilterDto) {
-    return this.discoveryService.getCompanions(query);
+  getCompanions(
+    @Query() query: CompanionFilterDto,
+    @CurrentCustomer() customer: any,
+  ) {
+    return this.discoveryService.getCompanions(query, customer?.id);
   }
 
   @Get('featured')
+  @UseGuards(OptionalJwtAuthGuard)
+  @ApiBearerAuth('customer-jwt')
   @ApiOperation({ summary: 'Get featured top-rated companions' })
-  getFeatured() {
-    return this.discoveryService.getFeaturedCompanions();
+  getFeatured(@CurrentCustomer() customer: any) {
+    return this.discoveryService.getFeaturedCompanions(customer?.id);
   }
 
   @Get('companions/:id')
+  @UseGuards(OptionalJwtAuthGuard)
+  @ApiBearerAuth('customer-jwt')
   @ApiOperation({ summary: 'Get companion detail by ID' })
-  getCompanionDetail(@Param('id') id: string) {
-    return this.discoveryService.getCompanionDetail(id);
+  getCompanionDetail(
+    @Param('id') id: string,
+    @CurrentCustomer() customer: any,
+  ) {
+    return this.discoveryService.getCompanionDetail(id, customer?.id);
   }
 
   @Get('favorites')

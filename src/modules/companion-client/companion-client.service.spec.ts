@@ -241,4 +241,43 @@ describe('CompanionClientService private companion contract', () => {
     await expect(service.respondToCounterOffer('booking-1', 'decline'))
       .rejects.toThrow('No response was recorded');
   });
+
+  it('reports completion only when Companion confirms a completed session', async () => {
+    process.env.COMPANION_API_URL = 'https://companion.example.test/';
+    process.env.INTERNAL_SERVICE_SECRET = 'test-internal-secret-token';
+    const fetchMock = jest.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        success: true,
+        data: { success: true, session: { id: 'companion-session-1', status: 'completed' } },
+      }),
+    } as Response);
+
+    await expect(service.completeSession('booking/1')).resolves.toMatchObject({
+      success: true,
+      session: { status: 'completed' },
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://companion.example.test/api/v1/internal/sessions/booking%2F1/complete',
+      expect.objectContaining({
+        method: 'POST',
+        body: '{}',
+        headers: expect.objectContaining({ 'X-Internal-Service-Key': 'test-internal-secret-token' }),
+        redirect: 'error',
+        signal: expect.any(AbortSignal),
+      }),
+    );
+  });
+
+  it('rejects a 200 response that does not confirm completion', async () => {
+    process.env.COMPANION_API_URL = 'https://companion.example.test';
+    process.env.INTERNAL_SERVICE_SECRET = 'test-internal-secret-token';
+    jest.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({ success: true, data: { status: 'active' } }),
+    } as Response);
+
+    await expect(service.completeSession('booking-1'))
+      .rejects.toBeInstanceOf(ServiceUnavailableException);
+  });
 });

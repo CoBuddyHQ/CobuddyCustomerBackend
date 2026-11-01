@@ -44,4 +44,12 @@ export class InternalStatusUpdateDto {
   @IsOptional()
   @IsString()
   newEnd?: string;
+
+  @IsOptional()
+  @IsString()
+  startedAt?: string;
+
+  @IsOptional()
+  @IsNumber()
+  extraMinutes?: number;
 }

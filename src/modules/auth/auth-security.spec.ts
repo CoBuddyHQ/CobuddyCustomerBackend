@@ -39,6 +39,14 @@ describe('Auth Security & QA Test OTP Bypass Safeguards', () => {
       expect(isTestPhoneAllowlisted('9876543210')).toBe(false);
     });
 
+    it('does not treat wildcard allowlist values as permission for every phone', () => {
+      process.env.OTP_TEST_BYPASS_ENABLED = 'true';
+      process.env.OTP_TEST_ALLOWED_PHONES = '*';
+      expect(isTestPhoneAllowlisted('9876543210')).toBe(false);
+      process.env.OTP_TEST_ALLOWED_PHONES = '9876543210,*';
+      expect(isTestPhoneAllowlisted('9111111111')).toBe(false);
+    });
+
     it('returns true only when phone is in OTP_TEST_ALLOWED_PHONES and flag is true', () => {
       process.env.OTP_TEST_BYPASS_ENABLED = 'true';
       process.env.OTP_TEST_ALLOWED_PHONES = '9876543210,919999988888';
@@ -68,6 +76,7 @@ describe('Auth Security & QA Test OTP Bypass Safeguards', () => {
   it('uses exactly six numeric digits for the mobile OTP inputs', () => {
     expect(/^\d{6}$/.test(QA_TEST_OTP)).toBe(true);
     expect(isReservedTestOtp(QA_TEST_OTP)).toBe(true);
+    expect(isReservedTestOtp('123456')).toBe(true);
     expect(isReservedTestOtp('9'.repeat(6))).toBe(false);
   });
 

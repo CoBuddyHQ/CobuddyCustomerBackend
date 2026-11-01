@@ -107,6 +107,12 @@ export class BookingService {
         'Safety agreement must be acknowledged before booking.',
       );
     }
+    const isBlocked = await this.prisma.customerBlock.findFirst({
+      where: { blockerId: customerId, blockedId: dto.companionId },
+    });
+    if (isBlocked) {
+      throw new BadRequestException('You cannot book a companion you have blocked.');
+    }
     const actId = dto.activityId;
     const durationHours = Number(dto.durationHours);
     const pricing = await this.calculateAuthoritativePricing(
@@ -263,7 +269,7 @@ export class BookingService {
             bookingId: booking.id,
             bookingRef: booking.bookingRef,
             customerId,
-            customerName: customer?.name || 'Customer',
+            customerName: customer?.name || undefined,
             customerPhone: customer?.phone,
             companionId: booking.companionId,
             companionName: booking.companionName,
@@ -751,6 +757,62 @@ export class BookingService {
           update: { passCode: effectivePassCode },
         });
       }
+      if (status === 'in_progress') {
+        const syncStart = dto.startedAt ? new Date(dto.startedAt) : new Date();
+        await this.prisma.customerSession.updateMany({
+          where: { bookingId },
+          data: {
+            status: 'active',
+            checkInTime: syncStart,
+          },
+        });
+        const existingNotif = await this.prisma.customerNotification.findFirst({
+          where: { customerId: booking.customerId, category: 'session', title: { contains: 'Started' } },
+        });
+          if (!existingNotif) {
+            await this.prisma.customerNotification.create({
+              data: {
+                customerId: booking.customerId,
+                title: 'Session Started! 🎉',
+                description: `Your session with ${booking.companionName || 'your companion'} is now in progress. Enjoy!`,
+                category: 'session',
+                icon: 'account-clock',
+                iconColor: '#3498DB',
+                route: 'ActiveSessionScreen',
+                stack: 'LiveSessionStack',
+                routeParams: {
+                  bookingId: booking.id,
+                  companionId: booking.companionId,
+                  companionName: booking.companionName,
+                },
+              },
+            });
+          }
+      }
+      if (status === 'completed') {
+        await this.prisma.customerSession.updateMany({
+          where: { bookingId, status: { not: 'completed' } },
+          data: {
+            status: 'completed',
+            checkOutTime: new Date(),
+          },
+        });
+      }
+      if (dto.extraMinutes && dto.extraMinutes > 0) {
+        await this.prisma.customerSession.updateMany({
+          where: { bookingId },
+          data: {
+            extensionMinutes: { increment: dto.extraMinutes },
+            totalMinutes: { increment: dto.extraMinutes },
+          },
+        });
+        await this.prisma.customerBooking.updateMany({
+          where: { id: bookingId },
+          data: {
+            durationHours: { increment: dto.extraMinutes / 60 },
+          },
+        });
+      }
       await this.companionClient?.syncBookingToAdmin({ bookingId, status });
       return { success: true, duplicate: true, booking: this.buildBookingResponse(booking) };
     }
@@ -891,11 +953,12 @@ export class BookingService {
           data: { status: 'in_progress' },
         });
 
+        const syncStart = dto.startedAt ? new Date(dto.startedAt) : new Date();
         await tx.customerSession.updateMany({
           where: { bookingId },
           data: {
             status: 'active',
-            checkInTime: new Date(),
+            checkInTime: syncStart,
           },
         });
 
@@ -1219,5 +1282,41 @@ export class BookingService {
         'A valid IANA time zone is required for the booking.',
       );
     }
+  }
+
+  // ── S2S: Admin Ban / Unban Customer ──
+  async updateCustomerBanStatus(customerId: string, payload: { isBanned: boolean; reason?: string }) {
+    const customer = await this.prisma.customer.findUnique({ where: { id: customerId } });
+    if (!customer) throw new NotFoundException('Customer not found');
+
+    const newStatus = payload.isBanned ? 'suspended' : 'active';
+    await this.prisma.customer.update({
+      where: { id: customerId },
+      data: { accountStatus: newStatus },
+    });
+
+    if (payload.isBanned) {
+      // Invalidate refresh tokens
+      await this.prisma.customerRefreshToken.deleteMany({
+        where: { customerId },
+      }).catch(() => {});
+
+      // Add notification
+      await this.prisma.customerNotification.create({
+        data: {
+          customerId,
+          title: 'Account Suspended',
+          description: `Your account has been suspended: ${payload.reason || 'Violation of terms.'}`,
+          category: 'safety',
+          icon: 'alert-octagon',
+          iconColor: '#E74C3C',
+          route: 'AccountSuspendedScreen',
+          stack: 'SafetyStack',
+        },
+      }).catch(() => {});
+    }
+
+    this.logger.log(`[S2S Admin] Customer ${customerId} ban status set to: ${newStatus}`);
+    return { success: true, accountStatus: newStatus };
   }
 }
