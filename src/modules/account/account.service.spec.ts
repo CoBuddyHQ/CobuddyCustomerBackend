@@ -2,7 +2,10 @@ import { ServiceUnavailableException, UnauthorizedException } from '@nestjs/comm
 import * as bcrypt from 'bcrypt';
 import { QA_TEST_OTP, RETIRED_QA_TEST_OTP } from '../../common/utils/otp-test.util';
 import { PrismaService } from '../../prisma/prisma.service';
+import { CompanionClientService } from '../companion-client/companion-client.service';
 import { AccountService } from './account.service';
+
+const mockCompanionClient = { getCompanionById: jest.fn().mockResolvedValue(null) } as unknown as CompanionClientService;
 
 describe('AccountService mobile number change', () => {
   const oldEnvironment = { ...process.env };
@@ -29,7 +32,7 @@ describe('AccountService mobile number change', () => {
         createMany: jest.fn(),
       },
     };
-    const service = new AccountService(prisma as unknown as PrismaService);
+    const service = new AccountService(prisma as unknown as PrismaService, mockCompanionClient);
 
     await expect(
       service.requestChangeMobileOtp('customer-1', '+910000000001', '+910000000002'),
@@ -63,7 +66,7 @@ describe('AccountService mobile number change', () => {
       $transaction: jest.fn(),
     };
     prisma.$transaction.mockImplementation(async (callback) => callback(prisma));
-    const service = new AccountService(prisma as unknown as PrismaService);
+    const service = new AccountService(prisma as unknown as PrismaService, mockCompanionClient);
 
     await service.requestChangeMobileOtp('customer-1', oldPhone, newPhone);
     expect(/^\d{6}$/.test(QA_TEST_OTP)).toBe(true);
@@ -91,7 +94,7 @@ describe('AccountService mobile number change', () => {
         },
         customerOtp: { findFirst: jest.fn() },
       };
-      const service = new AccountService(prisma as unknown as PrismaService);
+      const service = new AccountService(prisma as unknown as PrismaService, mockCompanionClient);
       const submitted = reason === 'retired' ? RETIRED_QA_TEST_OTP : QA_TEST_OTP;
       await expect(service.verifyChangeMobile('customer-1', oldPhone, newPhone, submitted, submitted))
         .rejects.toBeInstanceOf(UnauthorizedException);
@@ -103,7 +106,7 @@ describe('AccountService mobile number change', () => {
 
 describe('AccountService reactivation requests', () => {
   it('does not report success while the Admin review path is unavailable', async () => {
-    const service = new AccountService({} as PrismaService);
+    const service = new AccountService({} as PrismaService, mockCompanionClient);
 
     await expect(service.submitReactivationRequest({ reason: 'Please review my account.' }))
       .rejects.toBeInstanceOf(ServiceUnavailableException);

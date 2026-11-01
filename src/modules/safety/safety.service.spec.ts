@@ -1,5 +1,4 @@
 import { Logger } from '@nestjs/common';
-import { Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SafetyService } from './safety.service';
 
