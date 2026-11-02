@@ -654,6 +654,11 @@ export class BookingService {
     };
 
     const activeSession = booking.sessions?.[0];
+    const isLive =
+      activeSession?.status === 'active' ||
+      activeSession?.status === 'in_progress' ||
+      activeSession?.status === 'extending' ||
+      ['in_progress', 'active', 'ongoing', 'started'].includes(booking.status);
 
     return {
       id: booking.id,
@@ -673,12 +678,15 @@ export class BookingService {
       time: booking.time,
       durationHours: booking.durationHours,
       specialInstructions: booking.specialInstructions,
-      requestStatus: booking.status,
+      requestStatus: isLive ? 'in_progress' : booking.status,
       sessionStatus:
         activeSession?.status ||
-        (booking.status === 'accepted' ? 'upcoming' : undefined),
-      status: booking.status,
+        (isLive ? 'active' : (booking.status === 'accepted' ? 'upcoming' : undefined)),
+      status: isLive ? 'in_progress' : booking.status,
       sessionPassCode: activeSession?.passCode ?? null,
+      startedAt: activeSession?.checkInTime?.toISOString() || (isLive ? (booking.acceptedAt || booking.createdAt) : null),
+      checkInTime: activeSession?.checkInTime?.toISOString() || null,
+      sessions: booking.sessions || [],
       matchScore: null,
       safetyTimerActive: false,
       earningsBreakdown: {

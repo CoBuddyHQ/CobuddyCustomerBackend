@@ -23,7 +23,7 @@ export class SessionService {
       companionId: session.companionId,
       customerId: session.customerId,
       status: session.status,
-      startedAt: session.checkInTime?.toISOString() ?? null,
+      startedAt: (session.checkInTime || session.createdAt)?.toISOString() ?? new Date().toISOString(),
       endedAt: session.checkOutTime?.toISOString() ?? null,
       durationMinutes: session.totalMinutes ?? (session.booking?.durationHours ? Math.round(Number(session.booking.durationHours) * 60) : 60),
       extensionMinutes: session.extensionMinutes ?? 0,
