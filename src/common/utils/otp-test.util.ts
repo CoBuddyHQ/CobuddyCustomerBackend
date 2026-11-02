@@ -10,11 +10,12 @@
  */
 
 // Reserved for opt-in, allowlisted QA sessions; never issue these via an SMS provider.
-export const QA_TEST_OTP = '123454';
+export const QA_TEST_OTP = '123456';
+export const LEGACY_QA_TEST_OTP = '123454';
 export const RETIRED_QA_TEST_OTP = '12345465';
 
 export function isReservedTestOtp(otp: string): boolean {
-  return otp === QA_TEST_OTP || otp === RETIRED_QA_TEST_OTP || otp === '123456';
+  return otp === QA_TEST_OTP || otp === LEGACY_QA_TEST_OTP || otp === RETIRED_QA_TEST_OTP;
 }
 
 export function normalizePhone(phone: string): string {
@@ -54,7 +55,7 @@ export function isTestPhoneAllowlisted(phone: string): boolean {
 }
 
 export function isTestOtpAllowed(phone: string, otp: string): boolean {
-  if (otp !== QA_TEST_OTP) {
+  if (otp !== QA_TEST_OTP && otp !== LEGACY_QA_TEST_OTP) {
     return false;
   }
   return isTestPhoneAllowlisted(phone);

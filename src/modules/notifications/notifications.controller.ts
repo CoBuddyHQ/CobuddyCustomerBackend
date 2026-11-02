@@ -1,4 +1,4 @@
-import { Controller, Get, Patch, Delete, Post, Param, Body, UseGuards } from '@nestjs/common';
+import { Controller, Get, Patch, Delete, Post, Param, Body, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentCustomer } from '../../common/decorators/current-customer.decorator';
@@ -13,8 +13,12 @@ export class NotificationsController {
 
   @Get()
   @ApiOperation({ summary: 'List customer notifications' })
-  listNotifications(@CurrentCustomer() customer: any) {
-    return this.notificationsService.listNotifications(customer.id);
+  listNotifications(
+    @CurrentCustomer() customer: any,
+    @Query('page') page = 1,
+    @Query('limit') limit = 20,
+  ) {
+    return this.notificationsService.listNotifications(customer.id, Number(page), Number(limit));
   }
 
   @Patch(':id/read')

@@ -5,14 +5,30 @@ import { PrismaService } from '../../prisma/prisma.service';
 export class NotificationsService {
   constructor(private prisma: PrismaService) {}
 
-  async listNotifications(customerId: string) {
-    const notifications = await this.prisma.customerNotification.findMany({
-      where: { customerId },
-      orderBy: { createdAt: 'desc' },
-    });
+  async listNotifications(customerId: string, page = 1, limit = 20) {
+    const validPage = Math.max(1, Number(page) || 1);
+    const validLimit = Math.min(100, Math.max(1, Number(limit) || 20));
+    const skip = (validPage - 1) * validLimit;
 
-    const unreadCount = notifications.filter(n => !n.isRead).length;
-    return { notifications, unreadCount };
+    const [notifications, total, unreadCount] = await Promise.all([
+      this.prisma.customerNotification.findMany({
+        where: { customerId },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: validLimit,
+      }),
+      this.prisma.customerNotification.count({ where: { customerId } }),
+      this.prisma.customerNotification.count({ where: { customerId, isRead: false } }),
+    ]);
+
+    return {
+      notifications,
+      unreadCount,
+      total,
+      page: validPage,
+      limit: validLimit,
+      hasMore: skip + notifications.length < total,
+    };
   }
 
   async markAsRead(customerId: string, notificationId: string) {

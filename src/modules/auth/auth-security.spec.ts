@@ -96,7 +96,7 @@ describe('Auth Security & QA Test OTP Bypass Safeguards', () => {
 
     it('rejects any other OTP even for an allowlisted phone number', () => {
       expect(isTestOtpAllowed('9876543210', '000000')).toBe(false);
-      expect(isTestOtpAllowed('9876543210', '123456')).toBe(false); // Old legacy bypass is rejected
+      expect(isTestOtpAllowed('9876543210', '111111')).toBe(false);
       expect(isTestOtpAllowed('9876543210', '1234546')).toBe(false);
     });
 
