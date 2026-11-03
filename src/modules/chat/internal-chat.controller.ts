@@ -114,6 +114,13 @@ export class InternalChatController {
     return this.chatService.adminGetConversation(conversationId);
   }
 
+  @Get('admin/conversations/:id/transcript')
+  @ApiOperation({ summary: 'Internal S2S get conversation transcript for Admin (alias)' })
+  @ApiHeader({ name: 'X-Internal-Service-Key', required: true })
+  adminGetConversationTranscript(@Param('id') conversationId: string) {
+    return this.chatService.adminGetConversation(conversationId);
+  }
+
   @Post('admin/conversations/:id/messages')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Internal S2S reply from Admin Staff' })
