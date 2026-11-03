@@ -55,45 +55,70 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         return;
       }
 
-      const candidateSecrets = [
-        process.env.JWT_SECRET,
-        process.env.COMPANION_JWT_SECRET,
-        process.env.ADMIN_JWT_SECRET,
-        'cobuddy-companion-jwt-secret-dev-change-in-production',
-      ].filter(Boolean) as string[];
+      const isProduction = process.env.NODE_ENV === 'production';
+      const customerSecret = process.env.JWT_SECRET || process.env.JWT_ACCESS_SECRET;
+      const companionSecret =
+        process.env.COMPANION_JWT_SECRET ||
+        (!isProduction ? 'cobuddy-companion-jwt-secret-dev-change-in-production' : undefined);
+      const adminSecret = process.env.ADMIN_JWT_SECRET;
 
       let payload: any = null;
-      let verifiedByAdminSecret = false;
+      let verifiedRole: 'customer' | 'companion' | 'staff' | null = null;
 
-      for (const secret of candidateSecrets) {
+      // 1. Try Customer verification
+      if (customerSecret) {
         try {
-          payload = await this.jwtService.verifyAsync(token, { secret });
-          if (payload) {
-            if (process.env.ADMIN_JWT_SECRET && secret === process.env.ADMIN_JWT_SECRET) {
-              verifiedByAdminSecret = true;
-            }
-            break;
+          const res = await this.jwtService.verifyAsync(token, { secret: customerSecret });
+          if (res?.sub) {
+            payload = res;
+            verifiedRole = 'customer';
           }
         } catch {
-          // Signature verification failed for this secret, try next
+          // Try next role
         }
       }
 
-      if (!payload || !payload.sub) {
-        this.logger.warn(`Socket ${client.id} disconnected: JWT signature verification failed`);
+      // 2. Try Companion verification if not customer
+      if (!payload && companionSecret) {
+        try {
+          const res = await this.jwtService.verifyAsync(token, { secret: companionSecret });
+          if (res?.sub) {
+            payload = res;
+            verifiedRole = 'companion';
+          }
+        } catch {
+          // Try next role
+        }
+      }
+
+      // 3. Try Admin verification ONLY if Admin secret matches AND role is staff
+      if (!payload && adminSecret) {
+        try {
+          const res = await this.jwtService.verifyAsync(token, { secret: adminSecret });
+          const staffRoles = ['SUPER_ADMIN', 'SUPPORT_AGENT', 'SUPPORT_LEAD', 'MODERATOR', 'SAFETY_OPERATOR', 'LEGAL_ADMIN'];
+          const hasStaffRole = Array.isArray(res?.roles) && res.roles.some((r: string) => staffRoles.includes(r));
+          if (res?.sub && hasStaffRole) {
+            payload = res;
+            verifiedRole = 'staff';
+          }
+        } catch {
+          // Failed admin verification
+        }
+      }
+
+      if (!payload || !payload.sub || !verifiedRole) {
+        this.logger.warn(`Socket ${client.id} disconnected: JWT signature verification failed or role unauthorized`);
         client.disconnect();
         return;
       }
 
       const userId = String(payload.sub);
-      // Staff role is only granted if verified with Admin JWT secret or explicit admin payload
-      const isStaff = verifiedByAdminSecret || Boolean(payload.department || (Array.isArray(payload.roles) && payload.roles.length > 0));
-      const role = isStaff ? 'staff' : (payload.role === 'companion' ? 'companion' : 'customer');
+      const role = verifiedRole;
 
       client.data.user = {
         id: userId,
         role,
-        name: payload.name || payload.displayName || (role === 'companion' ? 'Companion' : 'Customer'),
+        name: payload.name || payload.displayName || (role === 'companion' ? 'Companion' : role === 'staff' ? 'Staff Operator' : 'Customer'),
       };
 
       // Update real presence
