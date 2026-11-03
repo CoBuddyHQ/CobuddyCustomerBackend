@@ -1135,6 +1135,7 @@ export class BookingService {
     if (this.companionClient) {
       try {
         await this.companionClient.createBookingRequest(payload);
+        this.companionClient.clearDiscoveryCache();
         this.logger.log(
           `Successfully dispatched booking ${booking.id} to companion backend via CompanionClientService`,
         );

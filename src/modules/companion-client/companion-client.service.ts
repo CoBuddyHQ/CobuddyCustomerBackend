@@ -10,6 +10,16 @@ import * as crypto from 'crypto';
 @Injectable()
 export class CompanionClientService {
   private readonly logger = new Logger(CompanionClientService.name);
+  private readonly companionsCache = new Map<string, { data: any; expiresAt: number }>();
+  private readonly companionDetailCache = new Map<string, { data: any; expiresAt: number }>();
+  private readonly campaignsCache = new Map<string, { data: any; expiresAt: number }>();
+
+  public clearDiscoveryCache(): void {
+    this.companionsCache.clear();
+    this.companionDetailCache.clear();
+    this.campaignsCache.clear();
+    this.logger.log('Discovery and companion cache invalidated.');
+  }
 
   private get companionApiUrl(): string {
     return (process.env.COMPANION_API_URL || 'http://localhost:4001').replace(
@@ -46,6 +56,12 @@ export class CompanionClientService {
 
   // ── GET /api/v1/internal/companions ─────────────────────────────────────────
   async getCompanions(filter?: Record<string, any>) {
+    const cacheKey = JSON.stringify(filter || {});
+    const cached = this.companionsCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.data;
+    }
+
     const correlationId = crypto.randomUUID();
     const primaryUrl = new URL(
       `${this.companionApiUrl}/api/v1/internal/companions`,
@@ -71,7 +87,9 @@ export class CompanionClientService {
       }
 
       const json = await res.json();
-      return json.data !== undefined ? json.data : json;
+      const result = json.data !== undefined ? json.data : json;
+      this.companionsCache.set(cacheKey, { data: result, expiresAt: Date.now() + 45_000 });
+      return result;
     } catch (err: any) {
       this.logger.warn(
         `[CompanionClient] [${correlationId}] Connection/timeout error fetching companions: ${err.message}`,
@@ -85,6 +103,11 @@ export class CompanionClientService {
 
   // ── GET /api/v1/internal/companions/:id ─────────────────────────────────────
   async getCompanionById(companionId: string) {
+    const cached = this.companionDetailCache.get(companionId);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.data;
+    }
+
     const correlationId = crypto.randomUUID();
     const primaryUrl = `${this.companionApiUrl}/api/v1/internal/companions/${encodeURIComponent(companionId)}`;
 
@@ -104,7 +127,9 @@ export class CompanionClientService {
       }
 
       const json = await res.json();
-      return json.data !== undefined ? json.data : json;
+      const result = json.data !== undefined ? json.data : json;
+      this.companionDetailCache.set(companionId, { data: result, expiresAt: Date.now() + 60_000 });
+      return result;
     } catch (err: any) {
       if (
         err instanceof NotFoundException ||
