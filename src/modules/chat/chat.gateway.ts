@@ -198,7 +198,10 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   // ── Broadcast Helpers ──────────────────────────────────────────────────────
   public broadcastNewMessage(conversationId: string, message: any) {
     const room = `conversation_${conversationId}`;
-    this.server.to(room).emit('new_message', message);
+    if (this.server) {
+      this.server.to(room).emit('new_message', message);
+      this.server.to(room).emit('receive_message', message);
+    }
   }
 
   public broadcastReadReceipt(conversationId: string, userId: string, role: string) {

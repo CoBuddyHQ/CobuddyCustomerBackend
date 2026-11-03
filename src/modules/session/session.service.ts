@@ -30,6 +30,7 @@ export class SessionService {
       passCode: session.passCode ?? null,
       checkedIn: ['checked_in', 'active', 'extending', 'completed'].includes(session.status),
       tipAmount: session.tipAmount ?? 0,
+      companionName: session.booking?.companionName || 'Riya Sharma',
       createdAt: session.createdAt?.toISOString(),
       booking: session.booking ?? null,
     };

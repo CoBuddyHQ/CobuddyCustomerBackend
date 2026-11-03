@@ -161,6 +161,18 @@ export class ChatService {
 
   // ── 2. Backward Compatible Companion Conversation ──────────────────────────
   async getOrCreateCompanionConversation(customerId: string, companionId: string, bookingId?: string) {
+    if (!companionId && !bookingId) {
+      const activeSession = await this.prisma.customerSession.findFirst({
+        where: { customerId, status: { in: ['checked_in', 'active', 'extending'] } },
+        include: { booking: true },
+        orderBy: { createdAt: 'desc' },
+      });
+      if (activeSession) {
+        bookingId = activeSession.bookingId;
+        companionId = activeSession.companionId;
+      }
+    }
+
     if (bookingId) {
       return this.getOrCreateBookingConversation(customerId, bookingId);
     }
@@ -275,9 +287,27 @@ export class ChatService {
     page = 1,
     limit = 50,
   ) {
-    const conv = await this.prisma.customerConversation.findUnique({
+    let conv = await this.prisma.customerConversation.findUnique({
       where: { id: conversationId },
     });
+
+    if (!conv && conversationId) {
+      conv = await this.prisma.customerConversation.findUnique({
+        where: { bookingId: conversationId },
+      });
+    }
+
+    if (!conv && conversationId) {
+      conv = await this.prisma.customerConversation.findFirst({
+        where: {
+          OR: [
+            { customerId: participant.id, companionId: conversationId },
+            { companionId: participant.id, customerId: conversationId },
+          ],
+        },
+        orderBy: { updatedAt: 'desc' },
+      });
+    }
 
     if (!conv) {
       throw new NotFoundException('Conversation not found');
@@ -356,9 +386,27 @@ export class ChatService {
       }
     }
 
-    const conv = await this.prisma.customerConversation.findUnique({
+    let conv = await this.prisma.customerConversation.findUnique({
       where: { id: conversationId },
     });
+
+    if (!conv && conversationId) {
+      conv = await this.prisma.customerConversation.findUnique({
+        where: { bookingId: conversationId },
+      });
+    }
+
+    if (!conv && conversationId) {
+      conv = await this.prisma.customerConversation.findFirst({
+        where: {
+          OR: [
+            { customerId: participant.id, companionId: conversationId },
+            { companionId: participant.id, customerId: conversationId },
+          ],
+        },
+        orderBy: { updatedAt: 'desc' },
+      });
+    }
 
     if (!conv) {
       throw new NotFoundException('Conversation not found');
