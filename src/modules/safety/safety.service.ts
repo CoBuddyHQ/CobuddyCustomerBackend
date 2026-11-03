@@ -25,15 +25,56 @@ export class SafetyService {
     });
 
     const contactCount = contacts.length;
-    // The trusted-contact list is only stored in this service. No SMS, push, or
-    // emergency-dispatch provider is configured, so do not claim delivery.
+
+    // Dispatch to Admin S2S SOS Sync for centralized emergency response
+    const adminUrl = process.env.ADMIN_API_URL;
+    const secret = process.env.INTERNAL_SERVICE_SECRET;
+    let adminDispatched = false;
+
+    if (adminUrl && secret) {
+      const abortController = new AbortController();
+      const timeout = setTimeout(() => abortController.abort(), 5000);
+      try {
+        const baseUrl = adminUrl.replace(/\/+$/, '');
+        const resp = await fetch(`${baseUrl}/api/internal/sos/sync`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-internal-service-key': secret,
+          },
+          body: JSON.stringify({
+            id: sos.id,
+            alertRef: `SOS-CUST-${sos.id.slice(0, 8).toUpperCase()}`,
+            userId: customerId,
+            userType: 'CUSTOMER',
+            bookingId: sessionId ?? undefined,
+            lat,
+            lng,
+            status: 'active',
+          }),
+          signal: abortController.signal,
+        });
+        if (resp.ok) {
+          adminDispatched = true;
+          this.logger.log(`Admin S2S SOS sync successful for alert ${sos.id}`);
+        } else {
+          this.logger.warn(`Admin S2S SOS sync returned HTTP ${resp.status}`);
+        }
+      } catch (err: any) {
+        this.logger.warn(`Admin S2S SOS sync failed: ${err.message}`);
+      } finally {
+        clearTimeout(timeout);
+      }
+    }
 
     return {
-      message: 'SOS event recorded. Emergency contacts and dispatch were not notified because no delivery provider is configured.',
+      message: adminDispatched
+        ? 'SOS emergency alert recorded and dispatched to CoBuddy Safety Dispatch.'
+        : 'SOS event recorded.',
       sosId: sos.id,
       trustedContactCount: contactCount,
       contactsNotified: false,
-      dispatchStatus: 'NOT_CONFIGURED',
+      dispatchStatus: adminDispatched ? 'DISPATCHED_TO_ADMIN' : 'RECORDED_LOCAL',
     };
   }
 

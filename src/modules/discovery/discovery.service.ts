@@ -41,6 +41,10 @@ export class DiscoveryService {
       search: filter.search,
       page: filter.page,
       limit: filter.limit,
+      minRating: filter.minRating,
+      maxPrice: filter.maxPrice,
+      maxDistance: filter.maxDistance,
+      isOnline: filter.isOnline,
     });
     if (customerId && data?.companions) {
       const blocked = await this.prisma.customerBlock.findMany({

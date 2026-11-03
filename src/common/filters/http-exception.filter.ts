@@ -36,6 +36,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
 
     if (status >= 500) {
       this.logger.error(`[HTTP ERROR ${status}] ${method} ${requestPath}`);
+      this.logger.error(exception instanceof Error ? exception.stack : exception);
     } else {
       this.logger.warn(`[HTTP WARN ${status}] ${method} ${requestPath}`);
     }

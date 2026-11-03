@@ -55,24 +55,40 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         return;
       }
 
-      const jwtSecret = process.env.JWT_SECRET || 'fallback-secret';
-      let payload: any = null;
+      const candidateSecrets = [
+        process.env.JWT_SECRET,
+        process.env.COMPANION_JWT_SECRET,
+        process.env.ADMIN_JWT_SECRET,
+        'cobuddy-companion-jwt-secret-dev-change-in-production',
+      ].filter(Boolean) as string[];
 
-      try {
-        payload = await this.jwtService.verifyAsync(token, { secret: jwtSecret });
-      } catch {
-        // Fallback: check without verifying if dev mode or try alternative secrets
-        payload = this.jwtService.decode(token);
+      let payload: any = null;
+      let verifiedByAdminSecret = false;
+
+      for (const secret of candidateSecrets) {
+        try {
+          payload = await this.jwtService.verifyAsync(token, { secret });
+          if (payload) {
+            if (process.env.ADMIN_JWT_SECRET && secret === process.env.ADMIN_JWT_SECRET) {
+              verifiedByAdminSecret = true;
+            }
+            break;
+          }
+        } catch {
+          // Signature verification failed for this secret, try next
+        }
       }
 
       if (!payload || !payload.sub) {
-        this.logger.warn(`Socket ${client.id} disconnected: Invalid token payload`);
+        this.logger.warn(`Socket ${client.id} disconnected: JWT signature verification failed`);
         client.disconnect();
         return;
       }
 
       const userId = String(payload.sub);
-      const role = payload.role === 'companion' ? 'companion' : payload.role === 'staff' ? 'staff' : 'customer';
+      // Staff role is only granted if verified with Admin JWT secret or explicit admin payload
+      const isStaff = verifiedByAdminSecret || Boolean(payload.department || (Array.isArray(payload.roles) && payload.roles.length > 0));
+      const role = isStaff ? 'staff' : (payload.role === 'companion' ? 'companion' : 'customer');
 
       client.data.user = {
         id: userId,

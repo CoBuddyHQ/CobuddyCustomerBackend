@@ -54,6 +54,11 @@ export class CompanionClientService {
     };
   }
 
+  clearCompanionsCache() {
+    this.companionsCache.clear();
+    this.companionDetailCache.clear();
+  }
+
   // ── GET /api/v1/internal/companions ─────────────────────────────────────────
   async getCompanions(filter?: Record<string, any>) {
     const cacheKey = JSON.stringify(filter || {});

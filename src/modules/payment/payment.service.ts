@@ -2,6 +2,7 @@ import {
   Injectable,
   BadRequestException,
   NotFoundException,
+  ForbiddenException,
   Logger,
   ServiceUnavailableException,
   Optional,
@@ -253,6 +254,11 @@ export class PaymentService {
     const isMockGateway = !process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET;
     let rzpOrder: ProviderOrder;
     if (isMockGateway) {
+      if (process.env.NODE_ENV === 'production') {
+        throw new ServiceUnavailableException(
+          'Payment gateway is not configured. Live orders cannot be created in production.',
+        );
+      }
       rzpOrder = { id: `order_sim_${crypto.randomUUID().replace(/-/g, '').slice(0, 16)}` };
     } else {
       try {
@@ -297,6 +303,11 @@ export class PaymentService {
   }
 
   async confirmBookingPayment(customerId: string, bookingId: string) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new ForbiddenException(
+        'Direct payment confirmation bypass is strictly disabled in production. Payments must be verified through the Razorpay gateway.',
+      );
+    }
     const booking = await this.prisma.customerBooking.findFirst({
       where: { id: bookingId, customerId },
     });
@@ -375,6 +386,11 @@ export class PaymentService {
       razorpay_signature === 'simulated_signature' ||
       razorpay_signature === 'dev_bypass'
     ) {
+      if (process.env.NODE_ENV === 'production') {
+        throw new ForbiddenException(
+          'Simulated payments and bypass signatures are strictly prohibited in production.',
+        );
+      }
       const order = await this.prisma.customerRazorpayOrder.findUnique({
         where: { orderId: razorpay_order_id },
       });
