@@ -1,5 +1,5 @@
 import { Controller, Get, Post, Patch, Param, Body, Query, UseGuards } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
+import { ApiTags, ApiBearerAuth, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentCustomer } from '../../common/decorators/current-customer.decorator';
 import { ChatService } from './chat.service';
@@ -12,9 +12,22 @@ export class ChatController {
   constructor(private readonly chatService: ChatService) {}
 
   @Get('conversations')
-  @ApiOperation({ summary: 'List customer conversations' })
-  listConversations(@CurrentCustomer() customer: any) {
-    return this.chatService.listConversations(customer.id);
+  @ApiOperation({ summary: 'List customer conversations with optional search' })
+  @ApiQuery({ name: 'search', required: false })
+  listConversations(
+    @CurrentCustomer() customer: any,
+    @Query('search') search?: string,
+  ) {
+    return this.chatService.listConversations(customer.id, search);
+  }
+
+  @Post('conversations/booking/:bookingId')
+  @ApiOperation({ summary: 'Get or create unique conversation for a booking' })
+  getOrCreateBookingConv(
+    @CurrentCustomer() customer: any,
+    @Param('bookingId') bookingId: string,
+  ) {
+    return this.chatService.getOrCreateBookingConversation(customer.id, bookingId);
   }
 
   @Post('conversations/companion')
@@ -40,7 +53,12 @@ export class ChatController {
     @Query('page') page = '1',
     @Query('limit') limit = '50',
   ) {
-    return this.chatService.getMessages(customer.id, id, parseInt(page), parseInt(limit));
+    return this.chatService.getMessages(
+      { role: 'customer', id: customer.id, name: customer.name },
+      id,
+      parseInt(page) || 1,
+      parseInt(limit) || 50,
+    );
   }
 
   @Post('conversations/:id/messages')
@@ -48,14 +66,35 @@ export class ChatController {
   sendMessage(
     @CurrentCustomer() customer: any,
     @Param('id') id: string,
-    @Body() body: { text: string; attachmentUrl?: string },
+    @Body() body: { text?: string; attachmentUrl?: string; attachmentType?: string; clientMessageId?: string },
   ) {
-    return this.chatService.sendMessage(customer.id, id, body.text, body.attachmentUrl);
+    return this.chatService.sendMessage(
+      { role: 'customer', id: customer.id, name: customer.name },
+      id,
+      body,
+    );
   }
 
   @Patch('conversations/:id/read')
   @ApiOperation({ summary: 'Mark conversation as read' })
   markAsRead(@CurrentCustomer() customer: any, @Param('id') id: string) {
-    return this.chatService.markAsRead(customer.id, id);
+    return this.chatService.markAsRead(
+      { role: 'customer', id: customer.id },
+      id,
+    );
+  }
+
+  @Get('conversations/:id/search')
+  @ApiOperation({ summary: 'Search within a conversation' })
+  searchMessages(
+    @CurrentCustomer() customer: any,
+    @Param('id') id: string,
+    @Query('q') query: string,
+  ) {
+    return this.chatService.searchMessages(
+      { role: 'customer', id: customer.id },
+      id,
+      query || '',
+    );
   }
 }

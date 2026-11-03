@@ -307,34 +307,55 @@ model CustomerRazorpayOrder {
 }
 
 model CustomerConversation {
-  id            String            @id @default(uuid())
-  customerId    String
-  companionId   String?
-  bookingId     String?
-  isConcierge   Boolean           @default(false)
-  lastMessage   String?
-  lastMessageAt DateTime?
-  unreadCount   Int               @default(0)
-  createdAt     DateTime          @default(now())
-  customer      Customer          @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  messages      CustomerMessage[]
+  id                   String            @id @default(uuid())
+  customerId           String
+  companionId          String?
+  bookingId            String?           @unique
+  isConcierge          Boolean           @default(false)
+  status               String            @default("active") // active, closed, read_only
+  companionName        String?
+  companionAvatar      String?
+  customerName         String?
+  customerAvatar       String?
+  activityName         String?
+  lastMessage          String?
+  lastMessageAt        DateTime?
+  unreadCount          Int               @default(0)
+  customerUnreadCount  Int               @default(0)
+  companionUnreadCount Int               @default(0)
+  customerLastReadAt   DateTime?
+  companionLastReadAt  DateTime?
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @default(now()) @updatedAt
+  customer             Customer          @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  messages             CustomerMessage[]
 
   @@index([customerId])
+  @@index([companionId])
+  @@index([bookingId])
   @@map("customer_conversations")
 }
 
 model CustomerMessage {
-  id             String               @id @default(uuid())
-  conversationId String
-  senderType     MessageSenderType
-  senderId       String
-  text           String?
-  attachmentUrl  String?
-  isRead         Boolean              @default(false)
-  createdAt      DateTime             @default(now())
-  conversation   CustomerConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  id              String               @id @default(uuid())
+  clientMessageId String?
+  conversationId  String
+  senderType      MessageSenderType
+  senderId        String
+  senderName      String?
+  text            String?
+  attachmentUrl   String?
+  attachmentType  String?
+  isRead          Boolean              @default(false)
+  isFlagged       Boolean              @default(false)
+  flagReason      String?
+  flaggedAt       DateTime?
+  createdAt       DateTime             @default(now())
+  conversation    CustomerConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
-  @@index([conversationId])
+  @@index([conversationId, createdAt])
+  @@index([clientMessageId])
+  @@index([isFlagged])
   @@map("customer_messages")
 }
 
@@ -589,6 +610,7 @@ enum CustomerIncidentStatus {
 enum MessageSenderType {
   customer
   companion
+  staff
   concierge
   system
 }

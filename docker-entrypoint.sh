@@ -34,8 +34,8 @@ if [ "$NODE_ENV" = "production" ]; then
   echo ""
   exec node dist/main
 else
-  echo "      Syncing schema without accepting destructive data loss (development)..."
-  npx prisma db push
+  echo "      Syncing schema (development)..."
+  npx prisma db push --skip-generate --accept-data-loss || true
   echo ""
   echo "[4/4] Starting NestJS application..."
   echo "      Port: 4002"

@@ -10,6 +10,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CompanionClientService } from '../companion-client/companion-client.service';
+import { ChatService } from '../chat/chat.service';
 import {
   CreateBookingDto,
   CancelBookingDto,
@@ -31,6 +32,7 @@ export class BookingService {
   constructor(
     private prisma: PrismaService,
     @Optional() private companionClient?: CompanionClientService,
+    @Optional() private chatService?: ChatService,
   ) {}
 
   async getBookingQuote(dto: BookingPriceQuoteDto) {
@@ -888,6 +890,13 @@ export class BookingService {
           },
         });
       });
+      if (this.chatService) {
+        try {
+          await this.chatService.getOrCreateBookingConversation(booking.customerId, bookingId);
+        } catch (err: any) {
+          this.logger.warn(`Failed to auto-create conversation for accepted booking ${bookingId}: ${err.message}`);
+        }
+      }
       this.logger.log(`[S2S] Booking ${bookingId} updated to accepted.`);
     } else if (status === 'declined') {
       await this.prisma.$transaction(async (tx) => {
@@ -913,6 +922,13 @@ export class BookingService {
           },
         });
       });
+      if (this.chatService) {
+        try {
+          await this.chatService.updateBookingConversationStatus(bookingId, 'closed');
+        } catch (err: any) {
+          this.logger.warn(`Failed to update conversation status for declined booking ${bookingId}: ${err.message}`);
+        }
+      }
       this.logger.log(
         `[S2S] Booking ${bookingId} updated to declined (reason: ${dto.reason})`,
       );
@@ -1022,6 +1038,13 @@ export class BookingService {
           },
         });
       });
+      if (this.chatService) {
+        try {
+          await this.chatService.updateBookingConversationStatus(bookingId, 'read_only');
+        } catch (err: any) {
+          this.logger.warn(`Failed to update conversation status for completed booking ${bookingId}: ${err.message}`);
+        }
+      }
       this.logger.log(`[S2S] Booking ${bookingId} transitioned to completed`);
     } else if (status === 'cancelled') {
       await this.prisma.$transaction(async (tx) => {
@@ -1053,6 +1076,13 @@ export class BookingService {
           },
         });
       });
+      if (this.chatService) {
+        try {
+          await this.chatService.updateBookingConversationStatus(bookingId, 'closed');
+        } catch (err: any) {
+          this.logger.warn(`Failed to update conversation status for cancelled booking ${bookingId}: ${err.message}`);
+        }
+      }
       this.logger.log(`[S2S] Booking ${bookingId} transitioned to cancelled`);
     }
 
