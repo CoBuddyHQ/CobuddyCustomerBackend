@@ -2,7 +2,7 @@ import { SupportService } from './support.service';
 
 describe('SupportService FAQ claims', () => {
   it('does not promise checkout, escrow, provider refunds, emergency dispatch, or identity review', () => {
-    const service = new SupportService({} as never);
+    const service = new SupportService({} as never, {} as never);
     const faqs = service.getFaqs() as Array<{ id: string; answer: string }>;
     const copy = faqs.map((faq) => faq.answer.toLowerCase()).join(' ');
 

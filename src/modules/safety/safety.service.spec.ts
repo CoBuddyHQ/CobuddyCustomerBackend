@@ -14,7 +14,7 @@ describe('SafetyService SOS delivery status', () => {
     await expect(service.triggerSOS('customer-1')).resolves.toMatchObject({
       sosId: 'sos-1',
       contactsNotified: false,
-      dispatchStatus: 'NOT_CONFIGURED',
+      dispatchStatus: 'RECORDED_LOCAL',
     });
     expect(log).not.toHaveBeenCalled();
     expect(prisma.customerSOS.create).toHaveBeenCalledWith({

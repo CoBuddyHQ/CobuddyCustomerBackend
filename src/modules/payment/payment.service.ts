@@ -251,14 +251,17 @@ export class PaymentService {
     // Provider receipts have a 40-character limit.
     const receipt = `bk_${crypto.randomUUID()}`;
 
-    const isMockGateway = !process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET;
-    let rzpOrder: ProviderOrder;
-    if (isMockGateway) {
-      if (process.env.NODE_ENV === 'production') {
+    const allowSimulated = process.env.ALLOW_SIMULATED_PAYMENTS === 'true' && process.env.NODE_ENV !== 'production';
+    if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
+      if (!allowSimulated) {
         throw new ServiceUnavailableException(
-          'Payment gateway is not configured. Live orders cannot be created in production.',
+          'Payment gateway is not configured. No payment order was created.',
         );
       }
+    }
+
+    let rzpOrder: ProviderOrder;
+    if (allowSimulated && (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET)) {
       rzpOrder = { id: `order_sim_${crypto.randomUUID().replace(/-/g, '').slice(0, 16)}` };
     } else {
       try {
@@ -273,6 +276,7 @@ export class PaymentService {
         );
       } catch (err) {
         if (err instanceof ServiceUnavailableException) throw err;
+        if (!allowSimulated) throw err;
         this.logger.warn('Razorpay order creation failed; falling back to simulated order for dev/testing.');
         rzpOrder = { id: `order_sim_${crypto.randomUUID().replace(/-/g, '').slice(0, 16)}` };
       }

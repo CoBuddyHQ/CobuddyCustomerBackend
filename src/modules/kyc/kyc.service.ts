@@ -161,7 +161,7 @@ export class KycService {
 
     this.syncToAdmin(customerId).catch(() => {});
     return {
-      message: 'Liveness evidence stored and synced to Admin verification queue.',
+      message: 'Liveness evidence was stored. No automated assessment was performed; synced to Admin verification queue.',
     };
   }
 
