@@ -1,12 +1,15 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, Inject, forwardRef, Optional } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CompanionClientService } from '../companion-client/companion-client.service';
+import { ChatGateway } from '../chat/chat.gateway';
 
 @Injectable()
 export class SupportService {
   constructor(
     private prisma: PrismaService,
     private companionClient: CompanionClientService,
+    @Optional() @Inject(forwardRef(() => ChatGateway))
+    private readonly chatGateway?: ChatGateway,
   ) {}
 
   async listTickets(customerId: string) {
@@ -97,14 +100,16 @@ export class SupportService {
   }
 
   async addInboundMessage(ticketId: string, text: string, senderName?: string) {
-    const ticket = await this.prisma.customerSupportTicket.findUnique({
-      where: { id: ticketId },
+    const ticket = await this.prisma.customerSupportTicket.findFirst({
+      where: {
+        OR: [{ id: ticketId }, { ticketRef: ticketId }],
+      },
     });
     if (!ticket) throw new NotFoundException('Support ticket not found');
 
     const message = await this.prisma.customerSupportMessage.create({
       data: {
-        ticketId,
+        ticketId: ticket.id,
         senderType: 'concierge',
         senderId: 'admin_support',
         text,
@@ -112,9 +117,56 @@ export class SupportService {
     });
 
     await this.prisma.customerSupportTicket.update({
-      where: { id: ticketId },
+      where: { id: ticket.id },
       data: { status: 'in_progress', updatedAt: new Date() },
     });
+
+    // Mirror message into the customer's Concierge chat conversation
+    let conv = await this.prisma.customerConversation.findFirst({
+      where: { customerId: ticket.customerId, isConcierge: true },
+    });
+
+    if (!conv) {
+      conv = await this.prisma.customerConversation.create({
+        data: {
+          customerId: ticket.customerId,
+          isConcierge: true,
+          status: 'active',
+          companionName: 'CoBuddy Support Concierge',
+          customerName: 'Customer',
+          activityName: 'Concierge Support',
+          lastMessage: text,
+          lastMessageAt: new Date(),
+          customerUnreadCount: 1,
+          unreadCount: 1,
+        },
+      });
+    } else {
+      await this.prisma.customerConversation.update({
+        where: { id: conv.id },
+        data: {
+          lastMessage: text,
+          lastMessageAt: new Date(),
+          customerUnreadCount: { increment: 1 },
+          unreadCount: { increment: 1 },
+        },
+      });
+    }
+
+    const chatMsg = await this.prisma.customerMessage.create({
+      data: {
+        conversationId: conv.id,
+        senderType: 'concierge',
+        senderId: 'admin_support',
+        senderName: senderName || 'CoBuddy Support',
+        text,
+      },
+    });
+
+    // Real-time broadcast to Customer active screen
+    if (this.chatGateway) {
+      this.chatGateway.broadcastNewMessage(conv.id, chatMsg);
+    }
 
     return message;
   }

@@ -400,8 +400,8 @@ export class ChatService {
       conv = await this.prisma.customerConversation.findFirst({
         where: {
           OR: [
-            { customerId: participant.id, companionId: conversationId },
-            { companionId: participant.id, customerId: conversationId },
+            { customerId: sender.id, companionId: conversationId },
+            { companionId: sender.id, customerId: conversationId },
           ],
         },
         orderBy: { updatedAt: 'desc' },
@@ -493,8 +493,12 @@ export class ChatService {
     // 1. Broadcast to Customer Chat Room
     this.chatGateway.broadcastNewMessage(conversationId, message);
 
-    // 2. Relay to Companion Backend if recipient is Companion
-    if (sender.role !== 'companion' && conv.companionId) {
+    // 2. Relay or sync depending on conversation type
+    if (conv.isConcierge) {
+      this.syncConciergeMessageToSupport(conv, sender, text || '[Attachment]').catch((err) => {
+        this.logger.warn(`Failed to sync concierge message to Admin: ${err.message}`);
+      });
+    } else if (sender.role !== 'companion' && conv.companionId) {
       this.relayToCompanionBackend(conv, message).catch((err) => {
         this.logger.warn(`Failed to relay message to Companion backend: ${err.message}`);
       });
@@ -727,5 +731,144 @@ export class ChatService {
         });
       }
     }
+  }
+
+  // ── Helper: Sync Concierge message to Admin Support Tickets ───────────────
+  private async syncConciergeMessageToSupport(
+    conv: any,
+    sender: ParticipantIdentity,
+    text: string,
+  ) {
+    if (sender.role !== 'customer') return;
+
+    let ticket = await this.prisma.customerSupportTicket.findFirst({
+      where: {
+        customerId: sender.id,
+        status: { in: ['open', 'in_progress'] },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const lower = text.toLowerCase();
+    let category = 'CONCIERGE';
+    let subject = 'CoBuddy Concierge Support';
+    let priority = 'MEDIUM';
+
+    if (lower.includes('refund')) {
+      category = 'BILLING';
+      subject = 'Refund Status Inquiry';
+    } else if (lower.includes('safety') || lower.includes('emergency')) {
+      category = 'SAFETY';
+      subject = 'Safety Issue Report';
+      priority = 'CRITICAL';
+    } else if (lower.includes('cancel')) {
+      category = 'BOOKING';
+      subject = 'Booking Cancellation Request';
+    }
+
+    if (!ticket) {
+      ticket = await this.prisma.customerSupportTicket.create({
+        data: {
+          customerId: sender.id,
+          subject,
+          category,
+          status: 'open',
+          messages: {
+            create: {
+              senderType: 'customer',
+              senderId: sender.id,
+              text,
+            },
+          },
+        },
+      });
+
+      const customer = await this.prisma.customer.findUnique({
+        where: { id: sender.id },
+        select: { name: true, phone: true },
+      });
+      const userName = customer?.name || customer?.phone || 'Customer';
+
+      if (this.companionClient) {
+        await this.companionClient.syncTicketToAdmin({
+          ticketId: ticket.id,
+          userId: sender.id,
+          userName,
+          userType: 'CUSTOMER',
+          categoryCode: category,
+          subject,
+          message: text,
+          priority,
+        });
+      }
+    } else {
+      await this.prisma.customerSupportMessage.create({
+        data: {
+          ticketId: ticket.id,
+          senderType: 'customer',
+          senderId: sender.id,
+          text,
+        },
+      });
+
+      await this.prisma.customerSupportTicket.update({
+        where: { id: ticket.id },
+        data: { updatedAt: new Date(), status: 'open' },
+      });
+
+      if (this.companionClient) {
+        await this.companionClient.syncTicketMessageToAdmin(ticket.id, {
+          senderId: sender.id,
+          senderType: 'CUSTOMER',
+          message: text,
+        });
+      }
+    }
+
+    // Auto-respond for common intents
+    this.handleConciergeAutoReply(conv, text).catch(() => {});
+  }
+
+  // ── Helper: Smart concierge auto-reply for quick actions ───────────────────
+  private async handleConciergeAutoReply(conv: any, text: string) {
+    const lower = text.toLowerCase().trim();
+    let replyText = '';
+
+    if (lower === 'refund status' || lower.includes('refund')) {
+      replyText = 'We checked your account. You have no pending refund requests. If you would like to request a refund for a recent meetup, please specify the booking ID or details, and our support team will assist you.';
+    } else if (lower === 'cancel booking' || lower.includes('cancel booking')) {
+      replyText = 'To cancel an upcoming booking, go to Bookings > Select the active meetup > Tap Cancel Booking. Our support team has also received your request and is available if you need help.';
+    } else if (lower === 'report safety issue' || lower.includes('safety') || lower.includes('emergency')) {
+      replyText = 'Your safety is our top priority. For immediate life-threatening emergencies, please call local emergency services (112) or tap the SOS button. Our safety trust team has been alerted to this thread.';
+    } else if (lower === 'general help' || lower.includes('help')) {
+      replyText = 'Our dedicated support team has received your message and will assist you shortly. Please share any details or questions you have.';
+    }
+
+    if (!replyText) return;
+
+    // Small delay so bot feels responsive
+    await new Promise((r) => setTimeout(r, 600));
+
+    const replyMsg = await this.prisma.customerMessage.create({
+      data: {
+        conversationId: conv.id,
+        senderType: 'concierge',
+        senderId: 'concierge-bot',
+        senderName: 'CoBuddy Concierge',
+        text: replyText,
+      },
+    });
+
+    await this.prisma.customerConversation.update({
+      where: { id: conv.id },
+      data: {
+        lastMessage: replyText,
+        lastMessageAt: new Date(),
+        customerUnreadCount: { increment: 1 },
+        unreadCount: { increment: 1 },
+      },
+    });
+
+    this.chatGateway.broadcastNewMessage(conv.id, replyMsg);
   }
 }
