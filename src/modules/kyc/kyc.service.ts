@@ -125,7 +125,9 @@ export class KycService {
       });
 
       this.logger.log('KYC document evidence stored; syncing to Admin verification queue.');
-      this.syncToAdmin(customerId).catch(() => {});
+      this.syncToAdmin(customerId).catch((err) => {
+        this.logger.warn(`Failed to sync KYC case to Admin: ${err?.message}`);
+      });
       return {
         message: 'Document evidence was stored and marked pending.',
         kyc: { ...kyc, docNumber: maskedDoc },
@@ -145,7 +147,9 @@ export class KycService {
       create: { customerId, selfieUrl, status: 'pending', submittedAt: new Date() },
       update: { selfieUrl },
     });
-    this.syncToAdmin(customerId).catch(() => {});
+    this.syncToAdmin(customerId).catch((err) => {
+      this.logger.warn(`Failed to sync selfie to Admin: ${err?.message}`);
+    });
     return { message: 'Selfie uploaded', kyc: { ...kyc, docNumber: kyc.docNumber ? '****' : null } };
   }
 
@@ -178,8 +182,42 @@ export class KycService {
       data: { kycStatus: 'pending' },
     });
 
-    this.syncToAdmin(customerId).catch(() => {});
+    this.syncToAdmin(customerId).catch((err) => {
+      this.logger.warn(`Failed to sync KYC case to Admin during resubmit: ${err?.message}`);
+    });
     return { message: 'KYC resubmitted' };
+  }
+
+  async updateVerificationStatus(customerId: string, status: string, reason?: string) {
+    const normalizedStatus = status.toLowerCase() === 'approved' ? 'verified' : 'rejected';
+    const customer = await this.prisma.customer.findUnique({ where: { id: customerId } });
+    if (!customer) {
+      throw new NotFoundException(`Customer ${customerId} not found`);
+    }
+
+    await this.prisma.customer.update({
+      where: { id: customerId },
+      data: { kycStatus: normalizedStatus },
+    });
+
+    await this.prisma.customerKyc.upsert({
+      where: { customerId },
+      update: {
+        status: normalizedStatus,
+        verifiedAt: normalizedStatus === 'verified' ? new Date() : undefined,
+        rejectionReason: normalizedStatus === 'rejected' ? (reason || 'Verification rejected') : null,
+      },
+      create: {
+        customerId,
+        docType: 'AADHAAR',
+        status: normalizedStatus,
+        verifiedAt: normalizedStatus === 'verified' ? new Date() : undefined,
+        rejectionReason: normalizedStatus === 'rejected' ? (reason || 'Verification rejected') : null,
+      },
+    });
+
+    this.logger.log(`Customer ${customerId} KYC status updated to ${normalizedStatus} via Admin S2S.`);
+    return { success: true, customerId, status: normalizedStatus };
   }
 
   private async syncToAdmin(customerId: string) {
