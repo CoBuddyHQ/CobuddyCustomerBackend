@@ -1,9 +1,13 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { CompanionClientService } from '../companion-client/companion-client.service';
 
 @Injectable()
 export class SupportService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private companionClient: CompanionClientService,
+  ) {}
 
   async listTickets(customerId: string) {
     return this.prisma.customerSupportTicket.findMany({
@@ -30,6 +34,26 @@ export class SupportService {
       },
       include: { messages: true },
     });
+
+    // Lookup customer name for Admin view
+    const customer = await this.prisma.customer.findUnique({
+      where: { id: customerId },
+      select: { name: true, phone: true },
+    });
+    const userName = customer?.name || customer?.phone || 'Customer';
+
+    // Non-blocking sync to Admin Backend
+    this.companionClient.syncTicketToAdmin({
+      ticketId: ticket.id,
+      userId: customerId,
+      userName,
+      userType: 'CUSTOMER',
+      categoryCode: category,
+      subject,
+      message: initialMessage,
+      priority: 'MEDIUM',
+    }).catch(() => {});
+
     return ticket;
   }
 
@@ -60,6 +84,36 @@ export class SupportService {
     await this.prisma.customerSupportTicket.update({
       where: { id: ticketId },
       data: { status: 'open', updatedAt: new Date() },
+    });
+
+    // Sync message to Admin Backend
+    this.companionClient.syncTicketMessageToAdmin(ticketId, {
+      senderId: customerId,
+      senderType: 'CUSTOMER',
+      message: text,
+    }).catch(() => {});
+
+    return message;
+  }
+
+  async addInboundMessage(ticketId: string, text: string, senderName?: string) {
+    const ticket = await this.prisma.customerSupportTicket.findUnique({
+      where: { id: ticketId },
+    });
+    if (!ticket) throw new NotFoundException('Support ticket not found');
+
+    const message = await this.prisma.customerSupportMessage.create({
+      data: {
+        ticketId,
+        senderType: 'concierge',
+        senderId: 'admin_support',
+        text,
+      },
+    });
+
+    await this.prisma.customerSupportTicket.update({
+      where: { id: ticketId },
+      data: { status: 'in_progress', updatedAt: new Date() },
     });
 
     return message;

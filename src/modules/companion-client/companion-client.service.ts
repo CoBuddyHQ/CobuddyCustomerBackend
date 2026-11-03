@@ -536,4 +536,72 @@ export class CompanionClientService {
       this.logger.warn(`[CompanionClient] [${correlationId}] Extend session S2S error: ${e.message}`);
     }
   }
+
+  // ── POST /api/internal/tickets/sync (Admin Backend) ─────────────────────────
+  async syncTicketToAdmin(payload: {
+    ticketId: string;
+    userId: string;
+    userName?: string;
+    userType: 'CUSTOMER';
+    categoryCode: string;
+    subject: string;
+    message: string;
+    priority?: string;
+  }) {
+    const correlationId = crypto.randomUUID();
+    const endpoint = `${this.adminApiUrl}/api/internal/tickets/sync`;
+    try {
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: this.getHeaders(correlationId),
+        body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(5000),
+      });
+      if (!res.ok) {
+        this.logger.warn(
+          `[CompanionClient] [${correlationId}] Ticket sync to Admin returned ${res.status}`,
+        );
+        return false;
+      }
+      return true;
+    } catch (err: any) {
+      this.logger.warn(
+        `[CompanionClient] [${correlationId}] Ticket sync to Admin error: ${err.message}`,
+      );
+      return false;
+    }
+  }
+
+  // ── POST /api/internal/tickets/:id/messages/sync (Admin Backend) ───────────
+  async syncTicketMessageToAdmin(
+    ticketId: string,
+    payload: {
+      senderId: string;
+      senderType: 'CUSTOMER';
+      message: string;
+    },
+  ) {
+    const correlationId = crypto.randomUUID();
+    const endpoint = `${this.adminApiUrl}/api/internal/tickets/${encodeURIComponent(ticketId)}/messages/sync`;
+    try {
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: this.getHeaders(correlationId),
+        body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(5000),
+      });
+      if (!res.ok) {
+        this.logger.warn(
+          `[CompanionClient] [${correlationId}] Ticket message sync to Admin returned ${res.status}`,
+        );
+        return false;
+      }
+      return true;
+    } catch (err: any) {
+      this.logger.warn(
+        `[CompanionClient] [${correlationId}] Ticket message sync to Admin error: ${err.message}`,
+      );
+      return false;
+    }
+  }
 }
