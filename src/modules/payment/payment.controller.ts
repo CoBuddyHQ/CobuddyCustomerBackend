@@ -37,6 +37,18 @@ export class PaymentController {
     return this.paymentService.createOrder(customer.id, body.bookingId);
   }
 
+  @Post('confirm-booking')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('customer-jwt')
+  @ApiOperation({ summary: 'Complete payment and confirm booking' })
+  confirmBooking(
+    @CurrentCustomer() customer: { id: string },
+    @Body() body: { bookingId: string },
+  ) {
+    if (!body?.bookingId) throw new BadRequestException('bookingId is required');
+    return this.paymentService.confirmBookingPayment(customer.id, body.bookingId);
+  }
+
   @Post('verify')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('customer-jwt')

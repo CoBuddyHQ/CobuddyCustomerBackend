@@ -1293,26 +1293,35 @@ export class BookingService {
   }
 
   // ── S2S: Admin Ban / Unban Customer ──
-  async updateCustomerBanStatus(customerId: string, payload: { isBanned: boolean; reason?: string }) {
-    const customer = await this.prisma.customer.findUnique({ where: { id: customerId } });
+  async updateCustomerBanStatus(customerId: string, payload: { isBanned: boolean; reason?: string; phone?: string }) {
+    let customer = await this.prisma.customer.findUnique({ where: { id: customerId } });
+    if (!customer && payload.phone) {
+      customer = await this.prisma.customer.findUnique({ where: { phone: payload.phone } });
+    }
+    if (!customer) {
+      customer = await this.prisma.customer.findFirst({
+        where: { OR: [{ id: customerId }, { phone: customerId }] },
+      });
+    }
     if (!customer) throw new NotFoundException('Customer not found');
 
+    const targetId = customer.id;
     const newStatus = payload.isBanned ? 'suspended' : 'active';
     await this.prisma.customer.update({
-      where: { id: customerId },
+      where: { id: targetId },
       data: { accountStatus: newStatus },
     });
 
     if (payload.isBanned) {
       // Invalidate refresh tokens
       await this.prisma.customerRefreshToken.deleteMany({
-        where: { customerId },
+        where: { customerId: targetId },
       }).catch(() => {});
 
       // Add notification
       await this.prisma.customerNotification.create({
         data: {
-          customerId,
+          customerId: targetId,
           title: 'Account Suspended',
           description: `Your account has been suspended: ${payload.reason || 'Violation of terms.'}`,
           category: 'safety',
@@ -1324,7 +1333,7 @@ export class BookingService {
       }).catch(() => {});
     }
 
-    this.logger.log(`[S2S Admin] Customer ${customerId} ban status set to: ${newStatus}`);
-    return { success: true, accountStatus: newStatus };
+    this.logger.log(`[S2S Admin] Customer ${targetId} (phone: ${customer.phone}) ban status set to: ${newStatus}`);
+    return { success: true, accountStatus: newStatus, customerId: targetId };
   }
 }
