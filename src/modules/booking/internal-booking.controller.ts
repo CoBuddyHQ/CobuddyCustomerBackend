@@ -49,4 +49,15 @@ export class InternalBookingController {
   ) {
     return this.bookingService.updateCustomerBanStatus(customerId, body);
   }
+
+  @Post('/customers/:id/verification-decision')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Internal S2S endpoint from Admin for customer verification decision' })
+  @ApiHeader({ name: 'X-Internal-Service-Key', required: true, description: 'Internal S2S secret' })
+  async handleCustomerVerification(
+    @Param('id') customerId: string,
+    @Body() body: { status: 'approved' | 'rejected'; reason?: string },
+  ) {
+    return this.bookingService.updateCustomerVerificationStatus(customerId, body);
+  }
 }

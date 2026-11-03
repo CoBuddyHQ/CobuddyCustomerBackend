@@ -1367,4 +1367,38 @@ export class BookingService {
     this.logger.log(`[S2S Admin] Customer ${targetId} (phone: ${customer.phone}) ban status set to: ${newStatus}`);
     return { success: true, accountStatus: newStatus, customerId: targetId };
   }
+
+  async updateCustomerVerificationStatus(customerId: string, payload: { status: 'approved' | 'rejected'; reason?: string }) {
+    let customer = await this.prisma.customer.findUnique({ where: { id: customerId } });
+    if (!customer) {
+      customer = await this.prisma.customer.findFirst({
+        where: { OR: [{ id: customerId }, { phone: customerId }] },
+      });
+    }
+    if (!customer) throw new NotFoundException('Customer not found');
+
+    const kycStatus = payload.status === 'approved' ? 'verified' : 'rejected';
+    await this.prisma.customer.update({
+      where: { id: customer.id },
+      data: { kycStatus },
+    });
+
+    await this.prisma.customerKyc.upsert({
+      where: { customerId: customer.id },
+      create: {
+        customerId: customer.id,
+        status: payload.status === 'approved' ? 'verified' : 'rejected',
+        verifiedAt: payload.status === 'approved' ? new Date() : null,
+        rejectionReason: payload.status === 'rejected' ? (payload.reason || 'Verification rejected by administrator') : null,
+      },
+      update: {
+        status: payload.status === 'approved' ? 'verified' : 'rejected',
+        verifiedAt: payload.status === 'approved' ? new Date() : null,
+        rejectionReason: payload.status === 'rejected' ? (payload.reason || 'Verification rejected by administrator') : null,
+      },
+    });
+
+    this.logger.log(`[S2S Admin] Customer ${customer.id} KYC status updated to: ${kycStatus}`);
+    return { success: true, customerId: customer.id, kycStatus };
+  }
 }

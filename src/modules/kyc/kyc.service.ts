@@ -124,9 +124,10 @@ export class KycService {
         data: { kycStatus: 'pending' },
       });
 
-      this.logger.log('KYC document evidence stored; administrative review is not connected to this service.');
+      this.logger.log('KYC document evidence stored; syncing to Admin verification queue.');
+      this.syncToAdmin(customerId).catch(() => {});
       return {
-        message: 'Document evidence was stored and marked pending. Administrative review is not connected.',
+        message: 'Document evidence was stored and marked pending.',
         kyc: { ...kyc, docNumber: maskedDoc },
       };
     } catch (err: any) {
@@ -144,6 +145,7 @@ export class KycService {
       create: { customerId, selfieUrl, status: 'pending', submittedAt: new Date() },
       update: { selfieUrl },
     });
+    this.syncToAdmin(customerId).catch(() => {});
     return { message: 'Selfie uploaded', kyc: { ...kyc, docNumber: kyc.docNumber ? '****' : null } };
   }
 
@@ -157,8 +159,9 @@ export class KycService {
       update: { livenessUrl },
     });
 
+    this.syncToAdmin(customerId).catch(() => {});
     return {
-      message: 'Liveness evidence was stored. No automated assessment or Admin review was performed.',
+      message: 'Liveness evidence stored and synced to Admin verification queue.',
     };
   }
 
@@ -175,6 +178,46 @@ export class KycService {
       data: { kycStatus: 'pending' },
     });
 
+    this.syncToAdmin(customerId).catch(() => {});
     return { message: 'KYC resubmitted' };
+  }
+
+  private async syncToAdmin(customerId: string) {
+    const adminUrl = process.env.ADMIN_API_URL;
+    const secret = process.env.INTERNAL_SERVICE_SECRET;
+    if (!adminUrl || !secret) return;
+
+    try {
+      const customer = await this.prisma.customer.findUnique({ where: { id: customerId } });
+      const kyc = await this.prisma.customerKyc.findUnique({ where: { customerId } });
+      if (!customer || !kyc) return;
+
+      const baseUrl = adminUrl.replace(/\/+$/, '');
+      const rawDocType = (kyc.docType || 'AADHAAR').toUpperCase();
+      const documentType = rawDocType === 'DRIVING_LICENSE' ? 'DL' : rawDocType;
+
+      await fetch(`${baseUrl}/api/internal/verification/cases/sync`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Internal-Service-Key': secret,
+        },
+        body: JSON.stringify({
+          applicantId: customer.id,
+          applicantType: 'CUSTOMER',
+          applicantName: customer.name || 'Customer',
+          applicantPhone: customer.phone,
+          cityName: customer.city || undefined,
+          documentType,
+          idDocumentUrl: kyc.frontDocUrl || 'pending',
+          selfieUrl: kyc.selfieUrl || 'pending',
+          status: 'PENDING_MANUAL_REVIEW',
+        }),
+        signal: AbortSignal.timeout(5000),
+      });
+      this.logger.log(`Synced KYC case for customer ${customerId} to Admin verification queue.`);
+    } catch (err: any) {
+      this.logger.warn(`Failed to sync KYC case to Admin: ${err?.message}`);
+    }
   }
 }
