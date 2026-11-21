@@ -17,9 +17,9 @@ export class DiscoveryService {
     private companionClient: CompanionClientService,
   ) {}
 
-  async getMasterData() {
+  async getMasterData(refresh?: boolean) {
     const now = Date.now();
-    if (this.masterDataCache && this.masterDataExpiresAt > now) {
+    if (!refresh && this.masterDataCache && this.masterDataExpiresAt > now) {
       return this.masterDataCache;
     }
 
@@ -39,7 +39,7 @@ export class DiscoveryService {
         const body: any = await res.json();
         const data = body?.data || body;
         this.masterDataCache = data;
-        this.masterDataExpiresAt = now + 5 * 60 * 1000;
+        this.masterDataExpiresAt = now + 30 * 1000;
         return data;
       }
     } catch (err: any) {

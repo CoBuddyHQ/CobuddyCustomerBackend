@@ -27,8 +27,8 @@ export class DiscoveryController {
   @Get('master-data')
   @UseGuards(OptionalJwtAuthGuard)
   @ApiOperation({ summary: 'Get live Admin master data bundle (cities, interests, languages, etc.)' })
-  getMasterData() {
-    return this.discoveryService.getMasterData();
+  getMasterData(@Query('refresh') refresh?: string) {
+    return this.discoveryService.getMasterData(refresh === 'true' || refresh === '1');
   }
 
   @Get('home')
