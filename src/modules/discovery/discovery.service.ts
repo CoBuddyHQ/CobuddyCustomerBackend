@@ -366,4 +366,47 @@ export class DiscoveryService {
       },
     };
   }
+
+  async getVenues(cityId?: string, placeType?: string) {
+    const bundle = await this.companionClient.getMasterDataBundle().catch(() => null);
+    let venues: any[] = (bundle?.venues && bundle.venues.length > 0) ? bundle.venues : [
+      {
+        id: 'venue-ngma-blr',
+        name: 'National Gallery of Modern Art (NGMA)',
+        address: '49, Manikyavelu Mansion, Palace Rd, Vasanth Nagar, Bengaluru',
+        placeType: 'GALLERY',
+      },
+      {
+        id: 'venue-thirdwave-koramangala',
+        name: 'Third Wave Coffee - Koramangala',
+        address: '80 Feet Rd, 4th Block, Koramangala, Bengaluru',
+        placeType: 'CAFE',
+      },
+      {
+        id: 'venue-starbucks-indiranagar',
+        name: 'Starbucks Reserve - Indiranagar',
+        address: '100 Feet Rd, HAL 2nd Stage, Indiranagar, Bengaluru',
+        placeType: 'CAFE',
+      },
+      {
+        id: 'venue-forum-mall',
+        name: 'The Forum Mall - Koramangala',
+        address: 'Hosur Rd, Chikku Lakshmaiah Layout, Koramangala, Bengaluru',
+        placeType: 'MALL',
+      },
+    ];
+
+    if (cityId) {
+      venues = venues.filter((v: any) => v.cityId === cityId);
+    }
+    if (placeType) {
+      const ptUpper = placeType.toUpperCase();
+      venues = venues.filter((v: any) => (v.placeType || '').toUpperCase() === ptUpper);
+    }
+
+    return {
+      success: true,
+      data: venues,
+    };
+  }
 }

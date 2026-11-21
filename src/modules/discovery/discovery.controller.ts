@@ -122,4 +122,15 @@ export class DiscoveryController {
   getActivities() {
     return this.discoveryService.getActivities();
   }
+
+  @Get('venues')
+  @ApiOperation({
+    summary: 'Get list of verified public venues for booking',
+  })
+  getVenues(
+    @Query('cityId') cityId?: string,
+    @Query('placeType') placeType?: string,
+  ) {
+    return this.discoveryService.getVenues(cityId, placeType);
+  }
 }
