@@ -299,10 +299,11 @@ export class CompanionClientService {
     }
 
     if (!res.ok) {
+      const errText = await res.text().catch(() => '');
       this.logger.warn(
-        `[CompanionClient] [${correlationId}] Failed to dispatch booking request: ${res.status}`,
+        `[CompanionClient] [${correlationId}] Failed to dispatch booking request: ${res.status} - ${errText}`,
       );
-      throw new Error(`Companion service failed with status ${res.status}`);
+      throw new Error(`Companion service failed with status ${res.status}: ${errText}`);
     }
 
     return await res.json();

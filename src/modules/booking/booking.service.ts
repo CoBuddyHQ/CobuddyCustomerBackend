@@ -1170,9 +1170,9 @@ export class BookingService {
           `Successfully dispatched booking ${booking.id} to companion backend via CompanionClientService`,
         );
         return true;
-      } catch {
+      } catch (err: any) {
         this.logger.warn(
-          'Failed to dispatch booking request to Companion Backend.',
+          `Failed to dispatch booking request to Companion Backend: ${err?.message || err}`,
         );
         return false;
       }
