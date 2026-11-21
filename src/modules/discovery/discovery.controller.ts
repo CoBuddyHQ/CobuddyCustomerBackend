@@ -24,6 +24,13 @@ import { CompanionFilterDto } from './dto/discovery.dto';
 export class DiscoveryController {
   constructor(private readonly discoveryService: DiscoveryService) {}
 
+  @Get('master-data')
+  @UseGuards(OptionalJwtAuthGuard)
+  @ApiOperation({ summary: 'Get live Admin master data bundle (cities, interests, languages, etc.)' })
+  getMasterData() {
+    return this.discoveryService.getMasterData();
+  }
+
   @Get('home')
   @UseGuards(OptionalJwtAuthGuard)
   @ApiBearerAuth('customer-jwt')
